@@ -745,6 +745,8 @@ export function toOpenAPISchema(
 			? [exclude.paths]
 			: []
 
+	const ignorePatterns = excludePaths.filter((path) => path instanceof RegExp)
+
 	const paths: OpenAPIV3.PathsObject = Object.create(null)
 	// @ts-ignore
 	const definitions = app.getGlobalDefinitions?.().type
@@ -767,11 +769,13 @@ export function toOpenAPISchema(
 		if (route.hooks?.detail?.hide) continue
 
 		const method = route.method.toLowerCase()
+		const shouldExclude = ignorePatterns.some((pattern) => pattern.test(route.path))
 
 		if (
 			(excludeStaticFile && route.path.includes('.')) ||
 			excludePaths.includes(route.path) ||
-			excludeMethods.includes(method)
+			excludeMethods.includes(method) ||
+			shouldExclude
 		)
 			continue
 
