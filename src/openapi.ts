@@ -1005,6 +1005,13 @@ export function toOpenAPISchema(
 								content['multipart/form-data'] = { schema: body }
 								content['text/plain'] = { schema: body }
 								continue
+
+							case 'arrayBuffer':
+							case 'application/octet-stream':
+								content['application/octet-stream'] = {
+									schema: body
+								}
+								continue
 						}
 					}
 
