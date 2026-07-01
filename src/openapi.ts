@@ -83,7 +83,7 @@ export const getLoosePath = (path: string) => {
 }
 
 const warnings = {
-	zod4: `import openapi from '@elysiajs/openapi'
+	zod4: `import openapi from '@onreza/elysia-openapi'
 import * as z from 'zod'
 
 openapi({
@@ -91,7 +91,7 @@ openapi({
     zod: z.toJSONSchema
   }
 })`,
-	zod3: `import openapi from '@elysiajs/openapi'
+	zod3: `import openapi from '@onreza/elysia-openapi'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 
 openapi({
@@ -99,7 +99,7 @@ openapi({
     zod: zodToJsonSchema
   }
 })`,
-	valibot: `import openapi from '@elysiajs/openapi'
+	valibot: `import openapi from '@onreza/elysia-openapi'
 import { toJsonSchema } from '@valibot/to-json-schema'
 
 openapi({
@@ -630,7 +630,7 @@ export const unwrapSchema = (
 				if (warned.zod4 || warned.zod3) break
 
 				console.warn(
-					"[@elysiajs/openapi] Zod doesn't provide JSON Schema method on the schema"
+					"[@onreza/elysia-openapi] Zod doesn't provide JSON Schema method on the schema"
 				)
 
 				if ('_zod' in schema) {
@@ -655,7 +655,7 @@ export const unwrapSchema = (
 				warned.valibot = true
 
 				console.warn(
-					'[@elysiajs/openapi] Valibot require a separate package for JSON Schema conversion'
+					'[@onreza/elysia-openapi] Valibot require a separate package for JSON Schema conversion'
 				)
 				console.warn(
 					'Please install @valibot/to-json-schema package and use it like this:\n'
@@ -670,7 +670,7 @@ export const unwrapSchema = (
 				warned.effect = true
 
 				console.warn(
-					"[@elysiajs/openapi] Effect Schema doesn't provide JSON Schema method on the schema"
+					"[@onreza/elysia-openapi] Effect Schema doesn't provide JSON Schema method on the schema"
 				)
 				console.warn(
 					"please provide JSONSchema from 'effect' package as follows:\n"
@@ -1139,7 +1139,7 @@ export function toOpenAPISchema(
 									hooks.response[status] = schema
 								} catch (error) {
 									console.log(
-										'[@elysiajs/openapi/gen] Failed to assigned response schema'
+										'[@onreza/elysia-openapi/gen] Failed to assigned response schema'
 									)
 									console.log(error)
 								}

@@ -23,7 +23,7 @@ const normalizeOpenAPIVersion = (
 
 	if (!OPENAPI_VERSION_REGEX.test(version)) {
 		console.warn(
-			`[@elysiajs/openapi] Invalid openapiVersion "${version}". Expected 3.0.x or 3.1.x. Falling back to ${DEFAULT_OPENAPI_VERSION}.`
+			`[@onreza/elysia-openapi] Invalid openapiVersion "${version}". Expected 3.0.x or 3.1.x. Falling back to ${DEFAULT_OPENAPI_VERSION}.`
 		)
 
 		return DEFAULT_OPENAPI_VERSION
@@ -77,7 +77,7 @@ export const openapi = <
 	mapJsonSchema,
 	embedSpec
 }: ElysiaOpenAPIConfig<Enabled, Path> = {}) => {
-	if (!enabled) return new Elysia({ name: '@elysiajs/openapi' })
+	if (!enabled) return new Elysia({ name: '@onreza/elysia-openapi' })
 
 	const info = {
 		title: 'Elysia Documentation',
@@ -127,7 +127,7 @@ export const openapi = <
 		return (cachedSchema = schema)
 	}
 
-	const app = new Elysia({ name: '@elysiajs/openapi' })
+	const app = new Elysia({ name: '@onreza/elysia-openapi' })
 
 	app.use((app) => {
 		if (provider === null) return app
@@ -203,7 +203,7 @@ export const openapi = <
 		},
 		{
 			error({ error }) {
-				console.log('[@elysiajs/openapi] error at specPath')
+				console.log('[@onreza/elysia-openapi] error at specPath')
 				console.warn(error)
 			},
 			detail: {

@@ -1,6 +1,6 @@
 {
     "type": "commonjs",
     "dependencies": {
-        "@elysiajs/openapi": "file:../../.."
+        "@onreza/elysia-openapi": "file:../../.."
     }
 }

@@ -125,7 +125,7 @@ export interface ElysiaOpenAPIConfig<
 	 *
 	 * @example
 	 * ```ts
-	 * import { openapi } from '@elysiajs/openapi'
+	 * import { openapi } from '@onreza/elysia-openapi'
 	 * import { toJsonSchema } from '@valibot/to-json-schema'
 	 *
 	 * openapi({

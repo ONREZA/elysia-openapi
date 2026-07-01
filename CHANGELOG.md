@@ -1,3 +1,23 @@
+# Unreleased
+Change:
+- Publish the ONREZA-maintained fork as `@onreza/elysia-openapi`.
+
+Feature:
+- Add configurable OpenAPI `3.0.x` / `3.1.x` output via `openapiVersion`.
+- Normalize nullable schemas for OpenAPI 3.1 output.
+
+Bug fix:
+- Normalize Date schemas to `string` / `date-time`.
+- Preserve usable ArkType schema output for predicates and morphs.
+- Include request body schemas for `parse: "none"` routes.
+- Support `ArrayBuffer` request bodies.
+- Support `RegExp` values in `exclude.paths`.
+- Handle `exclude.tags` when routes do not define tags.
+- Merge type generator compiler option defaults with user overrides.
+
+Chore:
+- Update development and validation dependencies.
+
 # 1.4.15 - 24 Apr 2026
 Chore:
 - Published under @elysia scope

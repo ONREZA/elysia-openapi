@@ -1,18 +1,32 @@
-# @elysia/openapi
+# @onreza/elysia-openapi
 
 [Elysia](https://github.com/elysiajs/elysia) plugin to add OpenAPI documentation.
+
+This is the ONREZA-maintained fork of `@elysia/openapi`, published as
+`@onreza/elysia-openapi`.
+
+Compared with upstream `@elysia/openapi@1.4.15`, this fork includes:
+
+- configurable OpenAPI `3.0.x` / `3.1.x` output via `openapiVersion`
+- OpenAPI 3.1 nullable schema normalization
+- Date schema normalization to `string` / `date-time`
+- safer ArkType fallback handling for predicates and morphs
+- request-body fixes for `parse: "none"` and `ArrayBuffer`
+- exclusion fixes for tags and `RegExp` path filters
+- type generator compiler option default merging
+- updated dependency set for the current ONREZA build/test baseline
 
 ## Installation
 
 ```bash
-bun add @elysia/openapi
+bun add @onreza/elysia-openapi
 ```
 
 ## Example
 
 ```typescript
 import { Elysia, t } from 'elysia'
-import { openapi } from '@elysia/openapi'
+import { openapi } from '@onreza/elysia-openapi'
 
 const app = new Elysia()
 	.use(openapi())

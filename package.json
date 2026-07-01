@@ -1,5 +1,5 @@
 {
-    "name": "@elysia/openapi",
+    "name": "@onreza/elysia-openapi",
     "version": "1.4.15",
     "description": "Elysia plugin to add OpenAPI documentation",
     "author": {
@@ -59,12 +59,12 @@
         "swagger",
         "scalar"
     ],
-    "homepage": "https://github.com/elysiajs/elysia-openapi",
+    "homepage": "https://github.com/ONREZA/elysia-openapi",
     "repository": {
         "type": "git",
-        "url": "https://github.com/elysiajs/elysia-openapi"
+        "url": "https://github.com/ONREZA/elysia-openapi"
     },
-    "bugs": "https://github.com/elysiajs/elysia-openapi/issues",
+    "bugs": "https://github.com/ONREZA/elysia-openapi/issues",
     "license": "MIT",
     "scripts": {
         "dev": "bun run --watch example/index.ts",

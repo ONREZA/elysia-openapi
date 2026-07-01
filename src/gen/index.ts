@@ -201,13 +201,13 @@ export const fromTypes =
 			typeof process.getBuiltinModule !== 'function'
 		)
 			throw new Error(
-				'[@elysiajs/openapi/gen] `fromTypes` from file path is only available in Node.js/Bun environment or environments'
+				'[@onreza/elysia-openapi/gen] `fromTypes` from file path is only available in Node.js/Bun environment or environments'
 			)
 
 		const fs = process.getBuiltinModule('fs')
 		if (!fs)
 			throw new Error(
-				'[@elysiajs/openapi/gen] `fromTypes` require `fs` module which is not available in this environment'
+				'[@onreza/elysia-openapi/gen] `fromTypes` require `fs` module which is not available in this environment'
 			)
 
 		try {
@@ -299,12 +299,12 @@ export const fromTypes =
 				const child_process = process.getBuiltinModule('child_process')
 				if (!child_process)
 					throw new Error(
-						'[@elysiajs/openapi/gen] `fromTypes` declaration generation require `child_process` module which is not available in this environment'
+						'[@onreza/elysia-openapi/gen] `fromTypes` declaration generation require `child_process` module which is not available in this environment'
 					)
 				const { spawnSync } = child_process
 				if (typeof spawnSync !== 'function')
 					throw new Error(
-						'[@elysiajs/openapi/gen] `fromTypes` declaration generation require child_process.spawnSync which is not available in this environment'
+						'[@onreza/elysia-openapi/gen] `fromTypes` declaration generation require child_process.spawnSync which is not available in this environment'
 					)
 
 				spawnSync(`tsc`, {
@@ -349,7 +349,7 @@ export const fromTypes =
 					fs.rmSync(join(tmpRoot, 'tsconfig.json'))
 
 					console.warn(
-						'[@elysiajs/openapi/gen] Failed to generate OpenAPI schema'
+						'[@onreza/elysia-openapi/gen] Failed to generate OpenAPI schema'
 					)
 					console.warn("Couldn't find generated declaration file")
 
@@ -410,7 +410,7 @@ export const fromTypes =
 			return declarationToJSONSchema(instance.slice(2))
 		} catch (error) {
 			console.warn(
-				'[@elysiajs/openapi/gen] Failed to generate OpenAPI schema'
+				'[@onreza/elysia-openapi/gen] Failed to generate OpenAPI schema'
 			)
 			console.warn(error)
 

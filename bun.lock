@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@elysiajs/openapi",
+      "name": "@onreza/elysia-openapi",
       "devDependencies": {
         "@apidevtools/swagger-parser": "^12.1.0",
         "@scalar/types": "^0.16.0",
