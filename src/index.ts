@@ -212,7 +212,9 @@ export {
 	toOpenAPISchema,
 	withBinaryResponse,
 	withContentType,
-	withHeaders
+	withHeaders,
+	withRequestContentType,
+	withResponse
 } from './openapi'
 export type {
 	ElysiaOpenAPIConfig,

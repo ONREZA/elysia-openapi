@@ -13,9 +13,10 @@ Compared with upstream `@elysia/openapi@1.4.15`, this fork includes:
 - safer ArkType fallback handling for predicates and morphs
 - request-body fixes for `parse: "none"` and `ArrayBuffer`
 - response headers emitted from `withHeaders`
-- explicit response media types via `withContentType` and `withBinaryResponse`
+- explicit response media types via `withContentType`, `withResponse`, and `withBinaryResponse`
+- explicit request body media types via `withRequestContentType`
 - raw OpenAPI component references via `componentRef`
-- sanitized default `operationId` generation for dotted, dashed, and parameterized paths
+- sanitized and de-duplicated default `operationId` generation for dotted, dashed, and parameterized paths
 - OpenAPI operation metadata merged from `references[path][method].detail`
 - nested TypeBox reference normalization
 - repeated documentation page request handling
@@ -163,8 +164,10 @@ openapi({
 
 ## response metadata helpers
 
-Use `withContentType` and `withBinaryResponse` when a response media type cannot
-be inferred from the schema shape.
+Use `withContentType`, `withResponse`, and `withBinaryResponse` when a response
+media type or response metadata cannot be inferred from the schema shape. Use
+`withRequestContentType` for imports/uploads whose request body media type
+should not be inferred from the route parser.
 
 ```typescript
 import { Elysia, t } from 'elysia'
@@ -172,7 +175,9 @@ import {
 	componentRef,
 	openapi,
 	withBinaryResponse,
-	withContentType
+	withContentType,
+	withRequestContentType,
+	withResponse
 } from '@onreza/elysia-openapi'
 
 new Elysia()
@@ -198,6 +203,22 @@ new Elysia()
 	)
 	.get('/reports/csv', () => 'name\nLilith', {
 		response: withContentType(t.String(), 'text/csv; charset=utf-8')
+	})
+	.post('/imports/csv', () => 'ok', {
+		body: withRequestContentType(t.String(), 'text/csv; charset=utf-8')
+	})
+	.get('/reports/export', () => 'name\nLilith', {
+		response: withResponse(t.String(), {
+			description: 'Generated CSV export',
+			contentType: 'text/csv; charset=utf-8',
+			headers: {
+				'x-total-rows': {
+					schema: {
+						type: 'integer'
+					}
+				}
+			}
+		})
 	})
 	.get('/invoices/pdf', () => new ArrayBuffer(0), {
 		response: {

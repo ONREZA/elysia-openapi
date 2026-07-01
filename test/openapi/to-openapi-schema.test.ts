@@ -6,7 +6,9 @@ import {
 	toOpenAPISchema,
 	withBinaryResponse,
 	withContentType,
-	withHeaders
+	withHeaders,
+	withRequestContentType,
+	withResponse
 } from '../../src/openapi'
 import { z } from 'zod'
 import { type } from 'arktype'
@@ -269,6 +271,33 @@ describe('OpenAPI > toOpenAPISchema', () => {
 		})
 	})
 
+	it('uses explicit request body content type metadata', () => {
+		const app = new Elysia().post('/imports/csv', () => 'ok', {
+			body: withRequestContentType(
+				t.String({
+					description: 'CSV payload'
+				}),
+				'text/csv; charset=utf-8'
+			)
+		})
+
+		const requestBody = JSON.parse(JSON.stringify(toOpenAPISchema(app)))
+			.paths['/imports/csv'].post.requestBody
+
+		expect(requestBody).toEqual({
+			description: 'CSV payload',
+			required: true,
+			content: {
+				'text/csv; charset=utf-8': {
+					schema: {
+						description: 'CSV payload',
+						type: 'string'
+					}
+				}
+			}
+		})
+	})
+
 	it('handle response', () => {
 		const app = new Elysia().get(
 			'/user',
@@ -363,6 +392,60 @@ describe('OpenAPI > toOpenAPISchema', () => {
 				schema: {
 					description: 'CSV report',
 					type: 'string'
+				}
+			}
+		})
+	})
+
+	it('merges explicit OpenAPI response metadata from withResponse', () => {
+		const app = new Elysia().get('/reports/export', () => 'name\nLilith', {
+			response: withResponse(
+				t.String({
+					description: 'CSV report'
+				}),
+				{
+					description: 'Generated CSV export',
+					contentType: 'text/csv; charset=utf-8',
+					headers: {
+						'x-total-rows': {
+							schema: {
+								type: 'integer'
+							}
+						}
+					},
+					links: {
+						manifest: {
+							operationId: 'getExportManifest'
+						}
+					}
+				}
+			)
+		})
+
+		const response = JSON.parse(JSON.stringify(toOpenAPISchema(app))).paths[
+			'/reports/export'
+		].get.responses['200']
+
+		expect(response).toEqual({
+			description: 'Generated CSV export',
+			headers: {
+				'x-total-rows': {
+					schema: {
+						type: 'integer'
+					}
+				}
+			},
+			links: {
+				manifest: {
+					operationId: 'getExportManifest'
+				}
+			},
+			content: {
+				'text/csv; charset=utf-8': {
+					schema: {
+						description: 'CSV report',
+						type: 'string'
+					}
 				}
 			}
 		})
@@ -1164,6 +1247,62 @@ describe('OpenAPI > toOpenAPISchema', () => {
 		})
 	})
 
+	it('deduplicates generated operationIds after sanitizing path segments', () => {
+		const app = new Elysia()
+			.get('/foo-bar', () => 'first')
+			.get('/foo_bar', () => 'second')
+
+		is(app, {
+			components: {
+				schemas: {}
+			},
+			paths: {
+				'/foo-bar': {
+					get: {
+						operationId: 'getFooBar'
+					}
+				},
+				'/foo_bar': {
+					get: {
+						operationId: 'getFooBar2'
+					}
+				}
+			}
+		})
+	})
+
+	it('deduplicates custom operationIds', () => {
+		const app = new Elysia()
+			.get('/first', () => 'first', {
+				detail: {
+					operationId: 'downloadFile'
+				}
+			})
+			.get('/second', () => 'second', {
+				detail: {
+					operationId: 'downloadFile'
+				}
+			})
+
+		is(app, {
+			components: {
+				schemas: {}
+			},
+			paths: {
+				'/first': {
+					get: {
+						operationId: 'downloadFile'
+					}
+				},
+				'/second': {
+					get: {
+						operationId: 'downloadFile2'
+					}
+				}
+			}
+		})
+	})
+
 	it('has path parameter without schema argument', () => {
 		const app = new Elysia().get('/user/:user/id/:id', () => 'hello')
 
@@ -1209,7 +1348,7 @@ describe('OpenAPI > toOpenAPISchema', () => {
 			paths: {
 				'/user/id': {
 					get: {
-						operationId: 'getUserId',
+						operationId: 'getUserId2',
 						parameters: [
 							{
 								in: 'path',

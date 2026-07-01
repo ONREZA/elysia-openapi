@@ -1,8 +1,10 @@
 # Unreleased
 Feature:
 - Sanitize generated `operationId` values for dotted, dashed, and parameterized paths.
+- De-duplicate generated and custom `operationId` values after sanitization.
 - Merge OpenAPI operation metadata from `references[path][method].detail`.
-- Add `withContentType` and `withBinaryResponse` helpers for explicit response media types.
+- Add `withContentType`, `withResponse`, and `withBinaryResponse` helpers for explicit response media types and response metadata.
+- Add `withRequestContentType` for explicit request body media types.
 - Add `componentRef` for raw OpenAPI component schema references.
 
 # 1.4.17 - 1 Jul 2026

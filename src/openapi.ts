@@ -59,6 +59,16 @@ const toOperationId = (method: string, paths: string) => {
 	return prefix + (segments.length ? segments.join('') : 'Index')
 }
 
+const uniqueOperationId = (
+	operationId: string,
+	operationIds: Map<string, number>
+) => {
+	const count = operationIds.get(operationId) ?? 0
+	operationIds.set(operationId, count + 1)
+
+	return count === 0 ? operationId : `${operationId}${count + 1}`
+}
+
 const optionalParamsRegex = /(\/:\w+\?)/g
 
 /**
@@ -1075,14 +1085,44 @@ const toResponseContentType = (schema: InputSchema['body']) =>
 		? (schema as { contentType?: string }).contentType
 		: undefined
 
+const toOpenAPIResponseOverride = (schema: InputSchema['body']) =>
+	schema && typeof schema === 'object' && !Array.isArray(schema)
+		? (schema as { openapiResponse?: OpenAPIV3.ResponseObject })
+				.openapiResponse
+		: undefined
+
 const stripResponseMetadata = <
 	T extends OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject
 >(
 	schema: T
 ): T => {
-	const { headers, contentType, ...rest } = schema as T & {
+	const { headers, contentType, openapiResponse, ...rest } = schema as T & {
 		headers?: unknown
 		contentType?: unknown
+		openapiResponse?: unknown
+	}
+	return rest as T
+}
+
+const toRequestContentTypes = (schema: InputSchema['body']) => {
+	if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return
+
+	const contentType = (
+		schema as { requestContentType?: string | string[] }
+	).requestContentType
+
+	if (!contentType) return
+
+	return Array.isArray(contentType) ? contentType : [contentType]
+}
+
+const stripRequestMetadata = <
+	T extends OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject
+>(
+	schema: T
+): T => {
+	const { requestContentType, ...rest } = schema as T & {
+		requestContentType?: unknown
 	}
 	return rest as T
 }
@@ -1122,6 +1162,9 @@ const toResponseObject = (
 	const contentType =
 		toResponseContentType(schema) ?? toResponseContentType(response as any)
 	const responseSchema = stripResponseMetadata(response)
+	const responseOverride =
+		toOpenAPIResponseOverride(schema) ??
+		toOpenAPIResponseOverride(response as any)
 	// @ts-ignore Must exclude $ref from root options
 	const { type, description } = unwrapReference(responseSchema, definitions)
 	const headers = toResponseHeaders(schema, vendors, openapiVersion)
@@ -1132,11 +1175,15 @@ const toResponseObject = (
 		description
 	)
 
-	return {
+	const generated = {
 		description: description ?? `Response for status ${status}`,
 		...(headers ? { headers } : {}),
 		...(content ? { content } : {})
 	}
+
+	return mergeOpenAPIResponseObject(generated, responseOverride) as
+		| OpenAPIV3.ResponseObject
+		| undefined
 }
 
 const mergeOpenAPIResponseObject = (
@@ -1245,6 +1292,7 @@ export function toOpenAPISchema(
 	)
 
 	const paths: OpenAPIV3.PathsObject = Object.create(null)
+	const operationIds = new Map<string, number>()
 	// @ts-ignore
 	const definitions = app.getGlobalDefinitions?.().type
 
@@ -1467,14 +1515,30 @@ export function toOpenAPISchema(
 			)
 
 			if (body) {
+				const requestContentTypes =
+					toRequestContentTypes(hooks.body) ??
+					toRequestContentTypes(body as any)
+				const bodySchema = stripRequestMetadata(body)
 				// @ts-ignore
 				const { type, description, $ref, ...options } = unwrapReference(
-					body,
+					bodySchema,
 					definitions
 				)
 
+				if (requestContentTypes?.length) {
+					operation.requestBody = {
+						description,
+						required: true,
+						content: Object.fromEntries(
+							requestContentTypes.map((contentType) => [
+								contentType,
+								{ schema: bodySchema }
+							])
+						)
+					}
+				}
 				// @ts-ignore
-				if (hooks.parse) {
+				else if (hooks.parse) {
 					const content: Record<
 						string,
 						{ schema: OpenAPIV3.SchemaObject }
@@ -1489,43 +1553,49 @@ export function toOpenAPISchema(
 						switch (parser.fn) {
 							case 'text':
 							case 'text/plain':
-								content['text/plain'] = { schema: body }
+								content['text/plain'] = { schema: bodySchema }
 								continue
 
 							case 'urlencoded':
 							case 'application/x-www-form-urlencoded':
 								content['application/x-www-form-urlencoded'] = {
-									schema: body
+									schema: bodySchema
 								}
 								continue
 
 							case 'json':
 							case 'application/json':
-								content['application/json'] = { schema: body }
+								content['application/json'] = {
+									schema: bodySchema
+								}
 								continue
 
 							case 'formdata':
 							case 'multipart/form-data':
 								content['multipart/form-data'] = {
-									schema: body
+									schema: bodySchema
 								}
 								continue
 
 							case 'none':
 								// When parse is "none", include all common content types
 								// since the raw body could be any format
-								content['application/json'] = { schema: body }
-								content['application/x-www-form-urlencoded'] = {
-									schema: body
+								content['application/json'] = {
+									schema: bodySchema
 								}
-								content['multipart/form-data'] = { schema: body }
-								content['text/plain'] = { schema: body }
+								content['application/x-www-form-urlencoded'] = {
+									schema: bodySchema
+								}
+								content['multipart/form-data'] = {
+									schema: bodySchema
+								}
+								content['text/plain'] = { schema: bodySchema }
 								continue
 
 							case 'arrayBuffer':
 							case 'application/octet-stream':
 								content['application/octet-stream'] = {
-									schema: body
+									schema: bodySchema
 								}
 								continue
 						}
@@ -1547,18 +1617,18 @@ export function toOpenAPISchema(
 							type === 'boolean'
 								? {
 										'text/plain': {
-											schema: body
+											schema: bodySchema
 										}
 									}
 								: {
 										'application/json': {
-											schema: body
+											schema: bodySchema
 										},
 										'application/x-www-form-urlencoded': {
-											schema: body
+											schema: bodySchema
 										},
 										'multipart/form-data': {
-											schema: body
+											schema: bodySchema
 										}
 									}
 					}
@@ -1623,7 +1693,7 @@ export function toOpenAPISchema(
 			if (method !== 'all') {
 				current[method] = {
 					...operation,
-					operationId
+					operationId: uniqueOperationId(operationId, operationIds)
 				}
 				continue
 			}
@@ -1641,7 +1711,7 @@ export function toOpenAPISchema(
 			])
 				current[method] = {
 					...operation,
-					operationId
+					operationId: uniqueOperationId(operationId, operationIds)
 				}
 		}
 	}
@@ -1698,6 +1768,35 @@ export const withContentType = <S extends TSchema>(
 	const clone = cloneResponseSchema(schema) as S & { contentType: string }
 
 	clone.contentType = contentType
+
+	return clone
+}
+
+export const withResponse = <S extends TSchema>(
+	schema: S,
+	response: Partial<OpenAPIV3.ResponseObject> & { contentType?: string }
+) => {
+	const clone = cloneResponseSchema(schema) as S & {
+		contentType?: string
+		openapiResponse?: OpenAPIV3.ResponseObject
+	}
+	const { contentType, ...openapiResponse } = response
+
+	if (contentType) clone.contentType = contentType
+	clone.openapiResponse = openapiResponse as OpenAPIV3.ResponseObject
+
+	return clone
+}
+
+export const withRequestContentType = <S extends TSchema>(
+	schema: S,
+	contentType: string | string[]
+) => {
+	const clone = cloneResponseSchema(schema) as S & {
+		requestContentType: string | string[]
+	}
+
+	clone.requestContentType = contentType
 
 	return clone
 }
