@@ -1,4 +1,4 @@
-# Unreleased
+# 1.4.17 - 1 Jul 2026
 Feature:
 - Emit response headers declared with `withHeaders`.
 - Add `x-tagGroups` documentation type support.
