@@ -1,4 +1,4 @@
-# Unreleased
+# 1.4.18 - 1 Jul 2026
 Feature:
 - Sanitize generated `operationId` values for dotted, dashed, and parameterized paths.
 - De-duplicate generated and custom `operationId` values after sanitization.
