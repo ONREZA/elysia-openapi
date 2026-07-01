@@ -1,4 +1,4 @@
-# Unreleased
+# 1.4.16 - 1 Jul 2026
 Change:
 - Publish the ONREZA-maintained fork as `@onreza/elysia-openapi`.
 
