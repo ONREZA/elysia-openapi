@@ -62,7 +62,7 @@
     "homepage": "https://github.com/ONREZA/elysia-openapi",
     "repository": {
         "type": "git",
-        "url": "https://github.com/ONREZA/elysia-openapi"
+        "url": "git+https://github.com/ONREZA/elysia-openapi.git"
     },
     "bugs": "https://github.com/ONREZA/elysia-openapi/issues",
     "license": "MIT",
