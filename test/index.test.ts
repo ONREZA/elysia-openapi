@@ -17,6 +17,20 @@ describe('OpenAPI', () => {
 		expect(res.status).toBe(200)
 	})
 
+	it('show OpenAPI page more than once', async () => {
+		const app = new Elysia().use(openapi())
+
+		await app.modules
+
+		const first = await app.handle(req('/openapi'))
+		expect(first.status).toBe(200)
+		expect(await first.text()).toContain('api-reference')
+
+		const second = await app.handle(req('/openapi'))
+		expect(second.status).toBe(200)
+		expect(await second.text()).toContain('api-reference')
+	})
+
 	it('returns a valid OpenAPI json config', async () => {
 		const app = new Elysia().use(openapi())
 
@@ -290,6 +304,53 @@ describe('OpenAPI', () => {
 
 		const resJson = await app.handle(req('/v2/openapi/json'))
 		expect(resJson.status).toBe(200)
+	})
+
+	it('uses absolute URL for custom absolute specPath', async () => {
+		const app = new Elysia().use(
+			openapi({
+				path: '/api/v1/docs',
+				specPath: '/api/v1/openapi.json'
+			})
+		)
+
+		await app.modules
+
+		const page = await app.handle(req('/api/v1/docs')).then((x) => x.text())
+		expect(page).toContain('"url":"/api/v1/openapi.json"')
+
+		const spec = await app.handle(req('/api/v1/openapi.json'))
+		expect(spec.status).toBe(200)
+	})
+
+	it('keeps relative URL for default specPath pattern', async () => {
+		const app = new Elysia().use(
+			openapi({
+				path: '/api/docs'
+			})
+		)
+
+		await app.modules
+
+		const page = await app.handle(req('/api/docs')).then((x) => x.text())
+		expect(page).toContain('"url":"api/docs/json"')
+
+		const spec = await app.handle(req('/api/docs/json'))
+		expect(spec.status).toBe(200)
+	})
+
+	it('keeps default spec URLs separate for multiple docs instances', async () => {
+		const app = new Elysia()
+			.use(openapi({ provider: 'swagger-ui', path: '/docs/v1' }))
+			.use(openapi({ provider: 'scalar', path: '/docs/v2' }))
+
+		await app.modules
+
+		const swagger = await app.handle(req('/docs/v1')).then((x) => x.text())
+		const scalar = await app.handle(req('/docs/v2')).then((x) => x.text())
+
+		expect(swagger).toContain('"url":"docs/v1/json"')
+		expect(scalar).toContain('"url":"docs/v2/json"')
 	})
 
 	it('Swagger UI options', async () => {

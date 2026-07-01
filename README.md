@@ -12,7 +12,13 @@ Compared with upstream `@elysia/openapi@1.4.15`, this fork includes:
 - Date schema normalization to `string` / `date-time`
 - safer ArkType fallback handling for predicates and morphs
 - request-body fixes for `parse: "none"` and `ArrayBuffer`
-- exclusion fixes for tags and `RegExp` path filters
+- response headers emitted from `withHeaders`
+- nested TypeBox reference normalization
+- repeated documentation page request handling
+- custom absolute `specPath` handling
+- exclusion fixes for tags, dotted API paths, and `RegExp` path filters
+- `x-tagGroups` documentation type support
+- `fromTypes` support for alphanumeric and digit-ending route keys
 - type generator compiler option default merging
 - updated dependency set for the current ONREZA build/test baseline
 

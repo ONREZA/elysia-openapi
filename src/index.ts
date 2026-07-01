@@ -1,4 +1,4 @@
-import { Elysia } from 'elysia'
+import { Elysia, type AnyElysia } from 'elysia'
 
 import { SwaggerUIRender } from './swagger'
 import { ScalarRender } from './scalar'
@@ -32,29 +32,6 @@ const normalizeOpenAPIVersion = (
 	return version as OpenAPIVersion
 }
 
-function isCloudflareWorker() {
-	try {
-		// Check for the presence of caches.default, which is a global in Workers
-		if (
-			// @ts-ignore
-			typeof caches !== 'undefined' &&
-			// @ts-ignore
-			typeof caches.default !== 'undefined'
-		)
-			return true
-
-		// @ts-ignore
-		if (typeof WebSocketPair !== 'undefined') {
-			return true
-		}
-	} catch (e) {
-		// If accessing these globals throws an error, it's likely not a Worker
-		return false
-	}
-
-	return false
-}
-
 /**
  * Plugin for [elysia](https://github.com/elysiajs/elysia) that auto-generate OpenAPI documentation page.
  *
@@ -86,9 +63,21 @@ export const openapi = <
 		...documentation.info
 	}
 
-	const relativePath = specPath.startsWith('/') ? specPath.slice(1) : specPath
+	const getSpecUrl = () => {
+		if (!specPath.startsWith('/')) return specPath
+
+		const defaultSpecPath = `${path}/json`
+		if (specPath === defaultSpecPath) return specPath.slice(1)
+
+		return specPath
+	}
+
+	const specUrl = getSpecUrl()
 	const effectiveOpenAPIVersion: OpenAPIVersion =
 		normalizeOpenAPIVersion(openapiVersion)
+
+	const getRouteCount = (app: AnyElysia) =>
+		(app as any).getGlobalRoutes?.().length ?? app.routes.length
 
 	let totalRoutes = 0
 	let cachedSchema: OpenAPIDocument | undefined
@@ -136,7 +125,7 @@ export const openapi = <
 			new Response(
 				provider === 'swagger-ui'
 					? SwaggerUIRender(info, {
-							url: relativePath,
+							url: specUrl,
 							dom_id: '#swagger-ui',
 							version: 'latest',
 							autoDarkMode: true,
@@ -145,7 +134,7 @@ export const openapi = <
 					: ScalarRender(
 							info,
 							{
-								url: relativePath,
+								url: specUrl,
 								version: 'latest',
 								cdn: `https://cdn.jsdelivr.net/npm/@scalar/api-reference@${scalar?.version ?? 'latest'}/dist/browser/standalone.min.js`,
 								...(scalar as ApiReferenceConfiguration),
@@ -153,7 +142,7 @@ export const openapi = <
 							},
 							embedSpec
 								? JSON.stringify(
-										totalRoutes === app.routes.length
+										totalRoutes === getRouteCount(app)
 											? cachedSchema
 											: toFullSchema(
 													toOpenAPISchema(
@@ -176,7 +165,7 @@ export const openapi = <
 
 		return app.get(
 			path,
-			embedSpec || isCloudflareWorker() ? page : page(),
+			page,
 			{
 				detail: {
 					hide: true
@@ -186,10 +175,12 @@ export const openapi = <
 	}).get(
 		specPath,
 		function openAPISchema(): OpenAPIDocument {
-			if (totalRoutes === app.routes.length && cachedSchema)
+			const routeCount = getRouteCount(app)
+
+			if (totalRoutes === routeCount && cachedSchema)
 				return cachedSchema
 
-			totalRoutes = app.routes.length
+			totalRoutes = routeCount
 
 			return toFullSchema(
 				toOpenAPISchema(

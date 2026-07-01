@@ -962,26 +962,15 @@ export const enumToOpenApi = <
 				type: 'string',
 				enum: schema.anyOf.map((item) => item.const)
 			} as any
+
+		if (schema[Kind] === 'Ref' && schema.$ref)
+			return toRef(schema.$ref) as any
 	}
 
-	const schema = _schema as OpenAPIV3.SchemaObject
+	if (Array.isArray(_schema))
+		return _schema.map((item) => enumToOpenApi(item)) as unknown as T
 
-	if (schema.type === 'object' && schema.properties) {
-		const properties: Record<string, unknown> = {}
-		for (const [key, value] of Object.entries(schema.properties))
-			properties[key] = enumToOpenApi(value)
-
-		return {
-			...schema,
-			properties
-		} as T
-	}
-
-	if (schema.type === 'array' && schema.items)
-		return {
-			...schema,
-			items: enumToOpenApi(schema.items)
-		} as T
+	const schema = _schema as OpenAPIV3.SchemaObject & Record<string, unknown>
 
 	// TypeBox's t.Date() serialises to anyOf: [{"type":"Date"}, ...].
 	// "Date" is not a valid OpenAPI 3.0 type; replace it with
@@ -1018,7 +1007,107 @@ export const enumToOpenApi = <
 		return { ...schema, anyOf: deduped } as T
 	}
 
-	return schema as T
+	const normalized: Record<string, unknown> = {}
+	for (const [key, value] of Object.entries(schema))
+		normalized[key] =
+			value && typeof value === 'object'
+				? enumToOpenApi(value as any)
+				: value
+
+	return normalized as T
+}
+
+const toResponseHeaders = (
+	schema: InputSchema['body'],
+	vendors?: MapJsonSchema,
+	openapiVersion: OpenAPIVersion = '3.1.2'
+): Record<string, OpenAPIV3.HeaderObject> | undefined => {
+	const headers =
+		schema && typeof schema === 'object' && !Array.isArray(schema)
+			? (schema as { headers?: TProperties }).headers
+			: undefined
+
+	if (!headers) return
+
+	const entries = Object.entries(headers)
+		.map(
+			([name, headerSchema]) =>
+				[
+					name,
+					{
+						schema: unwrapSchema(
+							headerSchema as any,
+							vendors,
+							'output',
+							openapiVersion
+						)
+					}
+				] as const
+		)
+		.filter(([, header]) => header.schema)
+
+	return entries.length ? Object.fromEntries(entries) : undefined
+}
+
+const stripHeaders = <
+	T extends OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject
+>(
+	schema: T
+): T => {
+	const { headers, ...rest } = schema as T & { headers?: unknown }
+	return rest as T
+}
+
+const VOID_RESPONSE_TYPES = new Set(['void', 'null', 'undefined'])
+const PLAIN_RESPONSE_TYPES = new Set([
+	'string',
+	'number',
+	'integer',
+	'boolean'
+])
+
+const toResponseContent = (
+	schema: OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject,
+	type: string | undefined,
+	description: string | undefined
+) =>
+	VOID_RESPONSE_TYPES.has(type!)
+		? ({ type, description } as any)
+		: PLAIN_RESPONSE_TYPES.has(type!)
+			? { 'text/plain': { schema } }
+			: { 'application/json': { schema } }
+
+const toResponseObject = (
+	schema: InputSchema['body'],
+	status: string,
+	definitions: Record<string, unknown>,
+	vendors?: MapJsonSchema,
+	openapiVersion: OpenAPIVersion = '3.1.2'
+): OpenAPIV3.ResponseObject | undefined => {
+	const response = unwrapSchema(schema, vendors, 'output', openapiVersion)
+	if (!response) return
+
+	const responseSchema = stripHeaders(response)
+	// @ts-ignore Must exclude $ref from root options
+	const { type, description } = unwrapReference(responseSchema, definitions)
+	const headers = toResponseHeaders(schema, vendors, openapiVersion)
+
+	return {
+		description: description ?? `Response for status ${status}`,
+		...(headers ? { headers } : {}),
+		content: toResponseContent(responseSchema, type, description)
+	}
+}
+
+const isLikelyStaticFilePath = (path: string) => {
+	const segment = path.split('/').pop()
+	if (!segment) return false
+
+	const dotIndex = segment.lastIndexOf('.')
+	if (dotIndex <= 0 || dotIndex === segment.length - 1) return false
+
+	const extension = segment.slice(dotIndex + 1)
+	return /^[A-Za-z][A-Za-z0-9]{0,15}$/.test(extension)
 }
 
 /**
@@ -1080,7 +1169,7 @@ export function toOpenAPISchema(
 		const shouldExclude = ignorePatterns.some((pattern) => pattern.test(route.path))
 
 		if (
-			(excludeStaticFile && route.path.includes('.')) ||
+			(excludeStaticFile && isLikelyStaticFilePath(route.path)) ||
 			excludePaths.includes(route.path) ||
 			excludeMethods.includes(method) ||
 			shouldExclude
@@ -1374,84 +1463,26 @@ export function toOpenAPISchema(
 				!(hooks.response as any)['~standard']
 			) {
 				for (let [status, schema] of Object.entries(hooks.response)) {
-					const response = unwrapSchema(
-						schema,
+					const response = toResponseObject(
+						schema as InputSchema['body'],
+						status,
+						definitions,
 						vendors,
-						'output',
 						openapiVersion
 					)
 
-					if (!response) continue
-
-					// @ts-ignore Must exclude $ref from root options
-					const { type, description, $ref, ..._options } =
-						unwrapReference(response, definitions)
-
-					operation.responses[status] = {
-						description:
-							description ?? `Response for status ${status}`,
-						content:
-							type === 'void' ||
-							type === 'null' ||
-							type === 'undefined'
-								? ({ type, description } as any)
-								: type === 'string' ||
-									  type === 'number' ||
-									  type === 'integer' ||
-									  type === 'boolean'
-									? {
-											'text/plain': {
-												schema: response
-											}
-										}
-									: {
-											'application/json': {
-												schema: response
-											}
-										}
-					}
+					if (response) operation.responses[status] = response
 				}
 			} else {
-				const response = unwrapSchema(
+				const response = toResponseObject(
 					hooks.response as any,
+					'200',
+					definitions,
 					vendors,
-					'output',
 					openapiVersion
 				)
 
-				if (response) {
-					// @ts-ignore
-					const {
-						type: _type,
-						description,
-						...options
-					} = unwrapReference(response, definitions)
-					const type = _type as string | undefined
-
-					// It's a single schema, default to 200
-					operation.responses['200'] = {
-						description: description ?? `Response for status 200`,
-						content:
-							type === 'void' ||
-							type === 'null' ||
-							type === 'undefined'
-								? ({ type, description } as any)
-								: type === 'string' ||
-									  type === 'number' ||
-									  type === 'integer' ||
-									  type === 'boolean'
-									? {
-											'text/plain': {
-												schema: response
-											}
-										}
-									: {
-											'application/json': {
-												schema: response
-											}
-										}
-					}
-				}
+				if (response) operation.responses['200'] = response
 			}
 		}
 
@@ -1516,7 +1547,16 @@ export function toOpenAPISchema(
 	} satisfies Pick<OpenAPIV3.Document, 'paths' | 'components'>
 }
 
-export const withHeaders = (schema: TSchema, headers: TProperties) =>
-	Object.assign(schema, {
-		headers: headers
-	})
+export const withHeaders = <S extends TSchema, H extends TProperties>(
+	schema: S,
+	headers: H
+) => {
+	const clone = Object.create(
+		Object.getPrototypeOf(schema),
+		Object.getOwnPropertyDescriptors(schema)
+	) as S & { headers: H }
+
+	clone.headers = headers
+
+	return clone
+}

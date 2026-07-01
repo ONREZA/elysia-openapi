@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'bun:test'
 import { AnyElysia, Elysia, t } from 'elysia'
 
-import { toOpenAPISchema } from '../../src/openapi'
+import { toOpenAPISchema, withHeaders } from '../../src/openapi'
 import { z } from 'zod'
 import { type } from 'arktype'
 
@@ -307,6 +307,37 @@ describe('OpenAPI > toOpenAPISchema', () => {
 		})
 	})
 
+	it('handle response headers', () => {
+		const app = new Elysia().get(
+			'/user',
+			() => ({ name: 'Lilith' }) as const,
+			{
+				response: withHeaders(
+					t.Object({
+						name: t.Literal('Lilith')
+					}),
+					{
+						'x-request-id': t.String()
+					}
+				)
+			}
+		)
+
+		const schema = JSON.parse(JSON.stringify(toOpenAPISchema(app)))
+		const response = schema.paths['/user'].get.responses['200']
+
+		expect(response.headers).toEqual({
+			'x-request-id': {
+				schema: {
+					type: 'string'
+				}
+			}
+		})
+		expect(
+			response.content['application/json'].schema.headers
+		).toBeUndefined()
+	})
+
 	it('handle multiple response status', () => {
 		const app = new Elysia().get(
 			'/user',
@@ -371,6 +402,72 @@ describe('OpenAPI > toOpenAPISchema', () => {
 				}
 			}
 		})
+	})
+
+	it('handle response headers on multiple status responses', () => {
+		const app = new Elysia().get(
+			'/user',
+			() => ({ name: 'Lilith' }) as const,
+			{
+				response: {
+					200: withHeaders(
+						t.Object({
+							name: t.Literal('Fouco')
+						}),
+						{
+							'x-rate-limit': t.Number()
+						}
+					),
+					404: t.Object({
+						name: t.Literal('Lilith')
+					})
+				}
+			}
+		)
+
+		const schema = JSON.parse(JSON.stringify(toOpenAPISchema(app)))
+		const responses = schema.paths['/user'].get.responses
+
+		expect(responses['200'].headers).toEqual({
+			'x-rate-limit': {
+				schema: {
+					type: 'number'
+				}
+			}
+		})
+		expect(responses['404'].headers).toBeUndefined()
+	})
+
+	it('does not mutate reused response schema when adding headers', () => {
+		const response = t.Object({
+			name: t.String()
+		})
+
+		const app = new Elysia()
+			.get('/with-headers', () => ({ name: 'Lilith' }), {
+				response: withHeaders(response, {
+					'x-request-id': t.String()
+				})
+			})
+			.get('/without-headers', () => ({ name: 'Lilith' }), {
+				response
+			})
+
+		const schema = JSON.parse(JSON.stringify(toOpenAPISchema(app)))
+
+		expect('headers' in response).toBe(false)
+		expect(
+			schema.paths['/with-headers'].get.responses['200'].headers
+		).toEqual({
+			'x-request-id': {
+				schema: {
+					type: 'string'
+				}
+			}
+		})
+		expect(
+			schema.paths['/without-headers'].get.responses['200'].headers
+		).toBeUndefined()
 	})
 
 	it('handle every parameters together', () => {
@@ -828,6 +925,31 @@ describe('OpenAPI > toOpenAPISchema', () => {
 		})
 	})
 
+	it('normalizes nested TypeBox refs', () => {
+		const app = new Elysia()
+			.model(
+				'user',
+				t.Object({
+					name: t.String()
+				})
+			)
+			.get('/profile', () => ({ user: { name: 'Lilith' } }), {
+				response: t.Object({
+					user: t.Ref('user')
+				})
+			})
+
+		const schema = JSON.parse(JSON.stringify(toOpenAPISchema(app)))
+
+		expect(
+			schema.paths['/profile'].get.responses['200'].content[
+				'application/json'
+			].schema.properties.user
+		).toEqual({
+			$ref: '#/components/schemas/user'
+		})
+	})
+
 	it('reference multiple response', () => {
 		const model = new Elysia().model({
 			lilith: t.Object({
@@ -1125,6 +1247,23 @@ describe('OpenAPI > toOpenAPISchema', () => {
 				}
 			}
 		})
+	})
+
+	it('keeps dotted API paths while excluding file-like static paths', () => {
+		const app = new Elysia()
+			.get('/test.2', () => 'hello')
+			.group('/v1.2', (app) =>
+				app.get('/test', () => ({
+					status: 'ok'
+				}))
+			)
+			.get('/favicon.ico', () => 'icon')
+
+		const schema = JSON.parse(JSON.stringify(toOpenAPISchema(app)))
+
+		expect(schema.paths['/test.2']).toBeDefined()
+		expect(schema.paths['/v1.2/test']).toBeDefined()
+		expect(schema.paths['/favicon.ico']).toBeUndefined()
 	})
 
 	it('response accept annotation', () => {

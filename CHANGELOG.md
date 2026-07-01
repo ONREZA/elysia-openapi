@@ -1,3 +1,22 @@
+# Unreleased
+Feature:
+- Emit response headers declared with `withHeaders`.
+- Add `x-tagGroups` documentation type support.
+
+Bug fix:
+- Keep the OpenAPI documentation page reusable across repeated requests.
+- Preserve custom absolute `specPath` URLs.
+- Keep default spec URLs separate across multiple documentation instances.
+- Normalize nested TypeBox refs inside generated OpenAPI schemas.
+- Support alphanumeric route keys in `fromTypes` declarations.
+- Keep digit-ending route segments intact in `fromTypes` declarations.
+- Keep dotted API paths when excluding static file routes.
+- Invalidate the cached OpenAPI schema using the global route count.
+- Avoid mutating reused schemas when adding response headers.
+
+Chore:
+- Update GitHub Actions checkout and Bun setup actions.
+
 # 1.4.16 - 1 Jul 2026
 Change:
 - Publish the ONREZA-maintained fork as `@onreza/elysia-openapi`.

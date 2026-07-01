@@ -7,6 +7,21 @@ export type OpenAPIProvider = 'scalar' | 'swagger-ui' | null
 export type OpenAPIVersion = `3.0.${number}` | `3.1.${number}`
 
 type MaybeArray<T> = T | T[]
+type OpenAPITagGroup = {
+	name: string
+	tags: string[]
+}
+
+type OpenAPIDocumentation = Omit<
+	Partial<OpenAPIV3.Document> & Partial<OpenAPIV3_1.Document>,
+	| 'x-express-openapi-additional-middleware'
+	| 'x-express-openapi-validation-strict'
+> & {
+	/**
+	 * Group tags in Scalar UI using the `x-tagGroups` extension.
+	 */
+	'x-tagGroups'?: OpenAPITagGroup[]
+}
 
 export type MapJsonSchema = { [vendor: string]: Function } & {
 	[vendor in  // schema['~standard'].vendor
@@ -58,11 +73,7 @@ export interface ElysiaOpenAPIConfig<
 	 *
 	 * @see https://spec.openapis.org/oas/latest.html
 	 */
-	documentation?: Omit<
-		Partial<OpenAPIV3.Document> & Partial<OpenAPIV3_1.Document>,
-		| 'x-express-openapi-additional-middleware'
-		| 'x-express-openapi-validation-strict'
-	>
+	documentation?: OpenAPIDocumentation
 
 	exclude?: {
 		/**

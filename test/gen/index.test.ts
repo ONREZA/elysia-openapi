@@ -443,7 +443,9 @@ describe('Gen > Type Gen', () => {
 					},
 					query: {},
 					response: {
-						'204': {},
+						'204': {
+							type: 'void'
+						},
 						'422': {
 							properties: {
 								expected: {
@@ -645,6 +647,115 @@ describe('Gen > Type Gen', () => {
 							},
 							required: ['name'],
 							type: 'object'
+						}
+					}
+				}
+			}
+		})
+	})
+
+	it('handle alphanumeric route keys like v1', () => {
+		const reference = declarationToJSONSchema(`
+			{
+				v1: {
+					foo: {
+						get: {
+							params: {}
+							query: {}
+							headers: {}
+							body: {}
+							response: {
+								200: {
+									value: number
+								}
+							}
+						}
+					}
+				}
+			}`)
+
+		expect(serializable(reference)!).toEqual({
+			'/v1/foo': {
+				get: {
+					body: {
+						properties: {},
+						type: 'object'
+					},
+					headers: {
+						properties: {},
+						type: 'object'
+					},
+					params: {
+						properties: {},
+						type: 'object'
+					},
+					query: {
+						properties: {},
+						type: 'object'
+					},
+					response: {
+						'200': {
+							properties: {
+								value: {
+									type: 'number'
+								}
+							},
+							required: ['value'],
+							type: 'object'
+						}
+					}
+				}
+			}
+		})
+	})
+
+	it('handle route segments ending with digits', () => {
+		const reference = declarationToJSONSchema(`
+			{
+				encode: {
+					base64: {
+						get: {
+							params: {}
+							query: {}
+							headers: {}
+							body: {}
+							response: {
+								200: string
+							}
+						}
+					}
+				}
+			} & {
+				hash: {
+					sha256: {
+						get: {
+							params: {}
+							query: {}
+							headers: {}
+							body: {}
+							response: {
+								200: string
+							}
+						}
+					}
+				}
+			}`)
+
+		expect(serializable(reference)!).toMatchObject({
+			'/encode/base64': {
+				get: {
+					response: {
+						'200': {
+							type: 'string'
+						}
+					}
+				}
+			},
+			'/hash/sha256': {
+				get: {
+					response: {
+						'200': {
+							type: 'string'
 						}
 					}
 				}
