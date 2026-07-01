@@ -99,7 +99,7 @@ export const openapi = <
 	}: ReturnType<typeof toOpenAPISchema>): OpenAPIDocument => {
 		const schema: OpenAPIDocument = {
 			...documentation,
-			openapi: effectiveOpenAPIVersion as OpenAPIVersion,
+			openapi: effectiveOpenAPIVersion,
 			tags: !exclude?.tags
 				? documentation.tags
 				: documentation.tags?.filter(

@@ -247,7 +247,8 @@ const normalizeSchemaReference = (
 const mergeSchemaProperty = (
 	existing: TSchema | string | undefined,
 	incoming: TSchema | string | undefined,
-	vendors?: MapJsonSchema
+	vendors?: MapJsonSchema,
+	openapiVersion: OpenAPIVersion = '3.1.2'
 ): TSchema | string | undefined => {
 	if (!existing) return incoming
 	if (!incoming) return existing
@@ -260,10 +261,20 @@ const mergeSchemaProperty = (
 	if (!incomingSchema) return existing
 
 	if (!isTSchema(incomingSchema) && incomingSchema['~standard'])
-		incomingSchema = unwrapSchema(incomingSchema, vendors) as any
+		incomingSchema = unwrapSchema(
+			incomingSchema,
+			vendors,
+			'input',
+			openapiVersion
+		) as any
 
 	if (!isTSchema(existingSchema) && existingSchema['~standard'])
-		existingSchema = unwrapSchema(existingSchema, vendors) as any
+		existingSchema = unwrapSchema(
+			existingSchema,
+			vendors,
+			'input',
+			openapiVersion
+		) as any
 
 	if (!incomingSchema) return existingSchema
 	if (!existingSchema) return incomingSchema
@@ -293,7 +304,8 @@ type ResponseSchema =
 
 const unwrapResponseSchema = (
 	schema: ResponseSchema,
-	vendors?: MapJsonSchema
+	vendors?: MapJsonSchema,
+	openapiVersion: OpenAPIVersion = '3.1.2'
 ) =>
 	typeof schema === 'string'
 		? normalizeSchemaReference(schema)
@@ -303,7 +315,12 @@ const unwrapResponseSchema = (
 				? schema
 				: // @ts-ignore
 					schema['~standard']
-					? unwrapSchema(schema as any, vendors, 'output')
+					? unwrapSchema(
+							schema as any,
+							vendors,
+							'output',
+							openapiVersion
+						)
 					: Object.fromEntries(
 							Object.entries(schema).map(([status, schema]) => [
 								status,
@@ -314,7 +331,8 @@ const unwrapResponseSchema = (
 										: unwrapSchema(
 												schema as any,
 												vendors,
-												'output'
+												'output',
+												openapiVersion
 											)
 							])
 						)
@@ -325,14 +343,15 @@ const unwrapResponseSchema = (
 const mergeResponseSchema = (
 	_existing: ResponseSchema,
 	_incoming: ResponseSchema,
-	vendors?: MapJsonSchema
+	vendors?: MapJsonSchema,
+	openapiVersion: OpenAPIVersion = '3.1.2'
 ): TSchema | { [status: number]: TSchema | string } | string | undefined => {
 	if (!_existing) return _incoming
 	if (!_incoming) return _existing
 
 	// Normalize string references to TRef nodes
-	let existing = unwrapResponseSchema(_existing, vendors)
-	let incoming = unwrapResponseSchema(_incoming, vendors)
+	let existing = unwrapResponseSchema(_existing, vendors, openapiVersion)
+	let incoming = unwrapResponseSchema(_incoming, vendors, openapiVersion)
 
 	if (!existing && !incoming) return undefined
 	if (incoming && !existing) return incoming as any
@@ -362,7 +381,8 @@ const mergeResponseSchema = (
 			schema[status] = mergeSchemaProperty(
 				existingSchema as TSchema,
 				incomingSchema as TSchema,
-				vendors
+				vendors,
+				openapiVersion
 			)
 		else if (existingSchema) schema[status] = existingSchema
 		else if (incomingSchema) schema[status] = incomingSchema
@@ -388,7 +408,8 @@ const mergeStandaloneValidators = (
 	> & {
 		standaloneValidator?: InputSchema[]
 	} & InputSchema,
-	vendors?: MapJsonSchema
+	vendors?: MapJsonSchema,
+	openapiVersion: OpenAPIVersion = '3.1.2'
 ) => {
 	const merged = { ...hooks }
 
@@ -400,42 +421,48 @@ const mergeStandaloneValidators = (
 			merged.body = mergeSchemaProperty(
 				merged.body as TSchema,
 				validator.body as TSchema,
-				vendors
+				vendors,
+				openapiVersion
 			)
 
 		if (validator.headers)
 			merged.headers = mergeSchemaProperty(
 				merged.headers as TSchema,
 				validator.headers as TSchema,
-				vendors
+				vendors,
+				openapiVersion
 			)
 
 		if (validator.query)
 			merged.query = mergeSchemaProperty(
 				merged.query as TSchema,
 				validator.query as TSchema,
-				vendors
+				vendors,
+				openapiVersion
 			)
 
 		if (validator.params)
 			merged.params = mergeSchemaProperty(
 				merged.params as TSchema,
 				validator.params as TSchema,
-				vendors
+				vendors,
+				openapiVersion
 			)
 
 		if (validator.cookie)
 			merged.cookie = mergeSchemaProperty(
 				merged.cookie as TSchema,
 				validator.cookie as TSchema,
-				vendors
+				vendors,
+				openapiVersion
 			)
 
 		if (validator.response)
 			merged.response = mergeResponseSchema(
 				merged.response as TSchema,
 				validator.response as TSchema,
-				vendors
+				vendors,
+				openapiVersion
 			)
 	}
 
@@ -474,13 +501,21 @@ const mergeStandaloneValidators = (
  * This makes guard() schemas accessible in the OpenAPI spec by converting
  * the standaloneValidator array into direct hook properties.
  */
-const flattenRoutes = (routes: any[], vendors?: MapJsonSchema): any[] =>
+const flattenRoutes = (
+	routes: any[],
+	vendors?: MapJsonSchema,
+	openapiVersion: OpenAPIVersion = '3.1.2'
+): any[] =>
 	routes.map((route) => {
 		if (!route.hooks?.standaloneValidator?.length) return route
 
 		return {
 			...route,
-			hooks: mergeStandaloneValidators(route.hooks, vendors)
+			hooks: mergeStandaloneValidators(
+				route.hooks,
+				vendors,
+				openapiVersion
+			)
 		}
 	})
 
@@ -952,7 +987,7 @@ export const enumToOpenApi = <
 	// "Date" is not a valid OpenAPI 3.0 type; replace it with
 	// {"type":"string","format":"date-time"} which is what Elysia actually
 	// serialises Date instances to on the wire.  Use replace (not filter) so
-	// that nullable dates � t.Nullable(t.Date()) � keep their {"type":"null"}
+	// that nullable dates -- t.Nullable(t.Date()) -- keep their {"type":"null"}
 	// sibling instead of collapsing to null-only.
 	if (schema.anyOf && Array.isArray(schema.anyOf)) {
 		const mapped = schema.anyOf.map((item) =>
@@ -1033,7 +1068,11 @@ export function toOpenAPISchema(
 	// Flatten routes to merge guard() schemas into direct hook properties
 	// This makes guard schemas accessible for OpenAPI documentation generation
 	// @ts-ignore private property
-	const routes = flattenRoutes(app.getGlobalRoutes(), vendors)
+	const routes = flattenRoutes(
+		(app as any).getGlobalRoutes(),
+		vendors,
+		openapiVersion
+	)
 	for (const route of routes) {
 		if (route.hooks?.detail?.hide) continue
 
