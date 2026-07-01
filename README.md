@@ -18,8 +18,9 @@ Compared with upstream `@elysia/openapi@1.4.15`, this fork includes:
 - custom absolute `specPath` handling
 - exclusion fixes for tags, dotted API paths, and `RegExp` path filters
 - `x-tagGroups` documentation type support
-- `fromTypes` support for alphanumeric and digit-ending route keys
+- `fromTypes` support for alphanumeric and digit-ending route keys, type aliases, and `import("...").TypeName` references
 - type generator compiler option default merging
+- Scalar theme preservation when custom CSS is not configured
 - updated dependency set for the current ONREZA build/test baseline
 
 ## Installation

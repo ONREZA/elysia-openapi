@@ -131,6 +131,24 @@ describe('OpenAPI', () => {
 		expect(embeddedSchema.openapi).toBe('3.1.2')
 	})
 
+	it('does not inject default Scalar CSS when a Scalar theme is configured', async () => {
+		const app = new Elysia().use(
+			openapi({
+				provider: 'scalar',
+				scalar: {
+					theme: 'moon'
+				}
+			})
+		)
+
+		await app.modules
+
+		const html = await app.handle(req('/openapi')).then((x) => x.text())
+
+		expect(html).toContain('"theme":"moon"')
+		expect(html).not.toContain('--scalar-color-accent')
+	})
+
 	it('converts nullable union to type-array for OpenAPI 3.1', async () => {
 		const app = new Elysia().use(
 			openapi({

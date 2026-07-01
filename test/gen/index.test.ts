@@ -1,9 +1,16 @@
 import { describe, it, expect } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { declarationToJSONSchema, fromTypes } from '../../src/gen'
+import {
+	declarationToJSONSchema,
+	extractGenericParam,
+	extractTypeAliases,
+	flattenNestedIntersections,
+	fromTypes,
+	inlineTypeReferences
+} from '../../src/gen'
 
 const serializable = (
 	a: Record<string, unknown> | undefined
@@ -433,7 +440,6 @@ describe('Gen > Type Gen', () => {
 
 		expect(serializable(reference)!).toEqual({
 			'/': {
-				derive: {},
 				get: {
 					body: {},
 					headers: {},
@@ -473,11 +479,7 @@ describe('Gen > Type Gen', () => {
 							type: 'object'
 						}
 					}
-				},
-				resolve: {},
-				response: {},
-				schema: {},
-				standaloneschema: {}
+				}
 			},
 			'/character': {
 				post: {
@@ -761,6 +763,276 @@ describe('Gen > Type Gen', () => {
 				}
 			}
 		})
+	})
+
+	it('inline type aliases into body and response schemas', () => {
+		const reference = declarationToJSONSchema(
+			`
+			{
+				users: {
+					post: {
+						params: {}
+						query: unknown
+						headers: unknown
+						body: CreateUserInput
+						response: {
+							201: User
+							400: ErrorResponse
+						}
+					}
+				}
+			}`,
+			{
+				CreateUserInput: '{ name: string; email: string }',
+				User: '{ id: string; name: string; email: string }',
+				ErrorResponse: '{ message: string; code: number }'
+			}
+		)
+
+		const route = serializable(reference)!['/users'] as any
+
+		expect(route.post.body).toEqual({
+			properties: {
+				name: { type: 'string' },
+				email: { type: 'string' }
+			},
+			required: ['name', 'email'],
+			type: 'object'
+		})
+		expect(route.post.response['201']).toEqual({
+			properties: {
+				id: { type: 'string' },
+				name: { type: 'string' },
+				email: { type: 'string' }
+			},
+			required: ['id', 'name', 'email'],
+			type: 'object'
+		})
+		expect(route.post.response['400']).toEqual({
+			properties: {
+				message: { type: 'string' },
+				code: { type: 'number' }
+			},
+			required: ['message', 'code'],
+			type: 'object'
+		})
+	})
+
+	it('extract generic route parameter without depending on object-shaped prefixes', () => {
+		const instance = `declare const app: Elysia<
+			"/api/v1",
+			any,
+			{ decorator: { token: string } },
+			{},
+			{ users: { get: { response: { 200: User } } } },
+			{ metadata: true }
+		>`
+
+		expect(extractGenericParam(instance, 4)).toBe(
+			'{ users: { get: { response: { 200: User } } } }'
+		)
+	})
+
+	it('flatten nested route intersections', () => {
+		const flattened = flattenNestedIntersections(`
+			{
+				api: {
+					v1: ({
+						users: {
+							get: {
+								params: {}
+								query: unknown
+								headers: unknown
+								body: unknown
+								response: { 200: string }
+							}
+						}
+					} & {
+							posts: {
+								get: {
+									params: {}
+									query: unknown
+									headers: unknown
+									body: unknown
+									response: { 200: string }
+								}
+							}
+						})
+					}
+				}
+			}`)
+
+		const reference = declarationToJSONSchema(flattened)
+		expect(serializable(reference)!).toMatchObject({
+			'/api/v1/users': {
+				get: {
+					response: {
+						'200': {
+							type: 'string'
+						}
+					}
+				}
+			},
+			'/api/v1/posts': {
+				get: {
+					response: {
+						'200': {
+							type: 'string'
+						}
+					}
+				}
+			}
+		})
+	})
+
+	it('extracts and inlines type aliases from fromTypes declaration files', () => {
+		const tmpRoot = mkdtempSync(join(tmpdir(), 'elysia-openapi-'))
+		const declarationPath = join(tmpRoot, 'app.d.ts')
+
+		try {
+			writeFileSync(
+				declarationPath,
+				`
+				type User = { id: string; name: string }
+				export declare const app: Elysia<
+					"",
+					{},
+					{},
+					{},
+					{
+						users: {
+							get: {
+								params: {}
+								query: unknown
+								headers: unknown
+								body: unknown
+								response: {
+									200: User
+								}
+							}
+						}
+					},
+					{},
+					{}
+				>
+				`
+			)
+
+			const reference = fromTypes(declarationPath, {
+				projectRoot: tmpRoot,
+				silent: true
+			})()
+
+			expect(
+				(serializable(reference)!['/users'] as any).get.response['200']
+			).toEqual({
+				properties: {
+					id: { type: 'string' },
+					name: { type: 'string' }
+				},
+				required: ['id', 'name'],
+				type: 'object'
+			})
+		} finally {
+			rmSync(tmpRoot, { recursive: true, force: true })
+		}
+	})
+
+	it('resolves import type references from fromTypes declaration files', () => {
+		const tmpRoot = mkdtempSync(join(tmpdir(), 'elysia-openapi-'))
+		const declarationPath = join(tmpRoot, 'app.d.ts')
+		const modelPath = join(tmpRoot, 'models.d.ts')
+
+		try {
+			writeFileSync(
+				modelPath,
+				'export type User = { id: string; email: string }'
+			)
+			writeFileSync(
+				declarationPath,
+				`
+				export declare const app: Elysia<
+					"",
+					{},
+					{},
+					{},
+					{
+						users: {
+							get: {
+								params: {}
+								query: unknown
+								headers: unknown
+								body: unknown
+								response: {
+									200: import("./models").User
+								}
+							}
+						}
+					},
+					{},
+					{}
+				>
+				`
+			)
+
+			const reference = fromTypes(declarationPath, {
+				projectRoot: tmpRoot,
+				silent: true
+			})()
+
+			expect(
+				(serializable(reference)!['/users'] as any).get.response['200']
+			).toEqual({
+				properties: {
+					id: { type: 'string' },
+					email: { type: 'string' }
+				},
+				required: ['id', 'email'],
+				type: 'object'
+			})
+		} finally {
+			rmSync(tmpRoot, { recursive: true, force: true })
+		}
+	})
+
+	it('keeps unresolved import type references as generated schemas', () => {
+		const reference = declarationToJSONSchema(`
+			{
+				users: {
+					get: {
+						params: {}
+						query: unknown
+						headers: unknown
+						body: unknown
+						response: {
+							200: {
+								id: string
+								updates: import("some/module").Unknown[] | null
+							}
+						}
+					}
+				}
+			}`)
+
+		const response = (serializable(reference)!['/users'] as any).get
+			.response['200']
+
+		expect(response.properties.id).toEqual({
+			type: 'string'
+		})
+		expect(response.properties.updates).toBeDefined()
+	})
+
+	it('extract and inline type alias helpers avoid partial replacements', () => {
+		const aliases = extractTypeAliases(`
+			type User = { id: string }
+			type UserProfile = { userId: string }
+		`)
+
+		expect(Object.keys(aliases)).toEqual(['User', 'UserProfile'])
+		expect(
+			inlineTypeReferences('profile: UserProfile; user: User', aliases)
+		).toBe('profile: { userId: string }; user: { id: string }')
 	})
 
 	it('merge compilerOptions override with declaration defaults', () => {

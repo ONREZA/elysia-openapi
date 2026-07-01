@@ -20,7 +20,11 @@
       },
       "peerDependencies": {
         "elysia": ">= 1.4.0",
+        "typescript": ">= 5.0.0",
       },
+      "optionalPeers": [
+        "typescript",
+      ],
     },
   },
   "packages": {

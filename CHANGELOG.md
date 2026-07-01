@@ -2,6 +2,7 @@
 Feature:
 - Emit response headers declared with `withHeaders`.
 - Add `x-tagGroups` documentation type support.
+- Resolve `fromTypes` type aliases and `import("...").TypeName` references.
 
 Bug fix:
 - Keep the OpenAPI documentation page reusable across repeated requests.
@@ -10,11 +11,14 @@ Bug fix:
 - Normalize nested TypeBox refs inside generated OpenAPI schemas.
 - Support alphanumeric route keys in `fromTypes` declarations.
 - Keep digit-ending route segments intact in `fromTypes` declarations.
+- Parse the `fromTypes` route generic without depending on object-shaped prefixes.
+- Preserve selected Scalar themes when no custom CSS is configured.
 - Keep dotted API paths when excluding static file routes.
 - Invalidate the cached OpenAPI schema using the global route count.
 - Avoid mutating reused schemas when adding response headers.
 
 Chore:
+- Keep `typescript` external in the build and mark it as an optional peer for advanced `fromTypes` import resolution.
 - Update GitHub Actions checkout and Bun setup actions.
 
 # 1.4.16 - 1 Jul 2026
