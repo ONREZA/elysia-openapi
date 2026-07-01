@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'bun:test'
 import { AnyElysia, Elysia, t } from 'elysia'
 
-import { toOpenAPISchema, withHeaders } from '../../src/openapi'
+import {
+	componentRef,
+	toOpenAPISchema,
+	withBinaryResponse,
+	withContentType,
+	withHeaders
+} from '../../src/openapi'
 import { z } from 'zod'
 import { type } from 'arktype'
 
@@ -336,6 +342,54 @@ describe('OpenAPI > toOpenAPISchema', () => {
 		expect(
 			response.content['application/json'].schema.headers
 		).toBeUndefined()
+	})
+
+	it('uses explicit response content type metadata', () => {
+		const app = new Elysia().get('/reports/csv', () => 'name\nLilith', {
+			response: withContentType(
+				t.String({
+					description: 'CSV report'
+				}),
+				'text/csv; charset=utf-8'
+			)
+		})
+
+		const response = JSON.parse(JSON.stringify(toOpenAPISchema(app))).paths[
+			'/reports/csv'
+		].get.responses['200']
+
+		expect(response.content).toEqual({
+			'text/csv; charset=utf-8': {
+				schema: {
+					description: 'CSV report',
+					type: 'string'
+				}
+			}
+		})
+	})
+
+	it('uses binary response helper for download endpoints', () => {
+		const app = new Elysia().get('/invoices/pdf', () => new ArrayBuffer(0), {
+			response: {
+				200: withBinaryResponse('application/pdf', {
+					description: 'Invoice PDF'
+				})
+			}
+		})
+
+		const response = JSON.parse(JSON.stringify(toOpenAPISchema(app))).paths[
+			'/invoices/pdf'
+		].get.responses['200']
+
+		expect(response.content).toEqual({
+			'application/pdf': {
+				schema: {
+					description: 'Invoice PDF',
+					format: 'binary',
+					type: 'string'
+				}
+			}
+		})
 	})
 
 	it('handle multiple response status', () => {
@@ -1074,6 +1128,36 @@ describe('OpenAPI > toOpenAPISchema', () => {
 				'/user': {
 					get: {
 						operationId: 'helloUser'
+					}
+				}
+			}
+		})
+	})
+
+	it('sanitizes generated operationId path segments', () => {
+		const app = new Elysia().get(
+			'/.well-known/acme-challenge/:token',
+			() => 'ok'
+		)
+
+		is(app, {
+			components: {
+				schemas: {}
+			},
+			paths: {
+				'/.well-known/acme-challenge/{token}': {
+					get: {
+						operationId: 'getWellKnownAcmeChallengeByToken',
+						parameters: [
+							{
+								in: 'path',
+								name: 'token',
+								required: true,
+								schema: {
+									type: 'string'
+								}
+							}
+						]
 					}
 				}
 			}

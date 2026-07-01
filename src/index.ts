@@ -207,7 +207,17 @@ export const openapi = <
 }
 
 export { fromTypes } from './gen'
-export { toOpenAPISchema, withHeaders } from './openapi'
-export type { ElysiaOpenAPIConfig, OpenAPIVersion } from './types'
+export {
+	componentRef,
+	toOpenAPISchema,
+	withBinaryResponse,
+	withContentType,
+	withHeaders
+} from './openapi'
+export type {
+	ElysiaOpenAPIConfig,
+	OpenAPIDocumentation,
+	OpenAPIVersion
+} from './types'
 
 export default openapi

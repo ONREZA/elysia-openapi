@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia'
 import SwaggerParser from '@apidevtools/swagger-parser'
-import { openapi } from '../src'
+import { componentRef, openapi } from '../src'
 
 import { describe, expect, it } from 'bun:test'
 import { fail } from 'assert'
@@ -38,6 +38,56 @@ describe('OpenAPI', () => {
 
 		const res = await app.handle(req('/openapi/json')).then((x) => x.json())
 		expect(res.openapi).toBe('3.1.2')
+		await SwaggerParser.validate(res).catch((err) => fail(err))
+	})
+
+	it('supports raw component schemas with componentRef', async () => {
+		const app = new Elysia()
+			.use(
+				openapi({
+					documentation: {
+						components: {
+							schemas: {
+								DownloadManifest: {
+									type: 'object',
+									required: ['url'],
+									properties: {
+										url: {
+											type: 'string',
+											format: 'uri'
+										}
+									}
+								}
+							}
+						}
+					}
+				})
+			)
+			.get('/manifest', () => ({ url: 'https://example.com/file.pdf' }), {
+				response: componentRef('DownloadManifest')
+			})
+
+		await app.modules
+
+		const res = await app.handle(req('/openapi/json')).then((x) => x.json())
+
+		expect(
+			res.paths['/manifest'].get.responses['200'].content[
+				'application/json'
+			].schema
+		).toEqual({
+			$ref: '#/components/schemas/DownloadManifest'
+		})
+		expect(res.components.schemas.DownloadManifest).toEqual({
+			type: 'object',
+			required: ['url'],
+			properties: {
+				url: {
+					type: 'string',
+					format: 'uri'
+				}
+			}
+		})
 		await SwaggerParser.validate(res).catch((err) => fail(err))
 	})
 

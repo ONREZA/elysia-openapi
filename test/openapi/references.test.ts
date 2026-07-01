@@ -205,4 +205,69 @@ describe('OpenAPI > references', () => {
 			}
 		})
 	})
+
+	it('merges OpenAPI detail metadata from references', () => {
+		const app = new Elysia().get('/downloads/:id', () => 'ok')
+
+		const schema = toOpenAPISchema(app, undefined, {
+			'/downloads/:id': {
+				get: {
+					detail: {
+						operationId: 'downloadFile',
+						security: [{ bearerAuth: [] }],
+						responses: {
+							default: {
+								description: 'Unexpected error'
+							}
+						}
+					},
+					response: {
+						200: t.String({
+							description: 'Download token'
+						})
+					}
+				}
+			}
+		})
+
+		expect(serializable(schema)).toEqual({
+			components: {
+				schemas: {}
+			},
+			paths: {
+				'/downloads/{id}': {
+					get: {
+						operationId: 'downloadFile',
+						parameters: [
+							{
+								in: 'path',
+								name: 'id',
+								required: true,
+								schema: {
+									type: 'string'
+								}
+							}
+						],
+						security: [{ bearerAuth: [] }],
+						responses: {
+							'200': {
+								content: {
+									'text/plain': {
+										schema: {
+											description: 'Download token',
+											type: 'string'
+										}
+									}
+								},
+								description: 'Download token'
+							},
+							default: {
+								description: 'Unexpected error'
+							}
+						}
+					}
+				}
+			}
+		})
+	})
 })

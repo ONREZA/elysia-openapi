@@ -12,7 +12,7 @@ type OpenAPITagGroup = {
 	tags: string[]
 }
 
-type OpenAPIDocumentation = Omit<
+export type OpenAPIDocumentation = Omit<
 	Partial<OpenAPIV3.Document> & Partial<OpenAPIV3_1.Document>,
 	| 'x-express-openapi-additional-middleware'
 	| 'x-express-openapi-validation-strict'
@@ -37,11 +37,12 @@ export type MapJsonSchema = { [vendor: string]: Function } & {
 export type AdditionalReference = {
 	[path in string]: {
 		[method in string]: {
-			params: TSchema
-			query: TSchema
-			headers: TSchema
-			body: TSchema
-			response: { [status in number]: TSchema }
+			params?: TSchema | string
+			query?: TSchema | string
+			headers?: TSchema | string
+			body?: TSchema | string
+			response?: { [status in number | string]: TSchema | string }
+			detail?: Partial<OpenAPIV3.OperationObject>
 		}
 	}
 }

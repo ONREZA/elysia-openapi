@@ -26,22 +26,37 @@ import type {
 export const capitalize = (word: string) =>
 	word.charAt(0).toUpperCase() + word.slice(1)
 
-const toRef = (name: string) =>
+export const componentRef = (name: string) =>
 	t.Ref(name.startsWith('#/') ? name : `#/components/schemas/${name}`)
 
+const toRef = componentRef
+
+const toOperationIdSegment = (segment: string) => {
+	if (!segment) return ''
+
+	const isParam = segment.startsWith(':')
+	const raw = segment.replace(/^:/, '').replace(/\?$/, '')
+	const optional = segment.endsWith('?')
+	const name = (raw.match(/[A-Za-z0-9]+/g) ?? [])
+		.map(capitalize)
+		.join('')
+
+	if (!name) return ''
+
+	return `${isParam ? 'By' : ''}${name}${optional ? 'Optional' : ''}`
+}
+
 const toOperationId = (method: string, paths: string) => {
-	let operationId = method.toLowerCase()
+	const prefix = method.toLowerCase()
 
-	if (!paths || paths === '/') return operationId + 'Index'
+	if (!paths || paths === '/') return prefix + 'Index'
 
-	for (const path of paths.split('/'))
-		operationId += path.includes(':')
-			? 'By' + capitalize(path.replace(':', ''))
-			: capitalize(path)
+	const segments = paths
+		.split('/')
+		.map(toOperationIdSegment)
+		.filter(Boolean)
 
-	operationId = operationId.replace(/\?/g, 'Optional')
-
-	return operationId
+	return prefix + (segments.length ? segments.join('') : 'Index')
 }
 
 const optionalParamsRegex = /(\/:\w+\?)/g
@@ -74,6 +89,9 @@ const isValidSchema = (schema: any): schema is TSchema =>
 		schema.type ||
 		schema.properties ||
 		schema.items)
+
+const isReferenceSchema = (schema: any): schema is TSchema | string =>
+	typeof schema === 'string' || isValidSchema(schema)
 
 export const getLoosePath = (path: string) => {
 	if (path.charCodeAt(path.length - 1) === 47)
@@ -1052,12 +1070,20 @@ const toResponseHeaders = (
 	return entries.length ? Object.fromEntries(entries) : undefined
 }
 
-const stripHeaders = <
+const toResponseContentType = (schema: InputSchema['body']) =>
+	schema && typeof schema === 'object' && !Array.isArray(schema)
+		? (schema as { contentType?: string }).contentType
+		: undefined
+
+const stripResponseMetadata = <
 	T extends OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject
 >(
 	schema: T
 ): T => {
-	const { headers, ...rest } = schema as T & { headers?: unknown }
+	const { headers, contentType, ...rest } = schema as T & {
+		headers?: unknown
+		contentType?: unknown
+	}
 	return rest as T
 }
 
@@ -1072,10 +1098,13 @@ const PLAIN_RESPONSE_TYPES = new Set([
 const toResponseContent = (
 	schema: OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject,
 	type: string | undefined,
+	contentType: string | undefined,
 	description: string | undefined
 ): OpenAPIV3.ResponseObject['content'] | undefined =>
 	VOID_RESPONSE_TYPES.has(type!)
 		? undefined
+		: contentType
+			? { [contentType]: { schema } }
 		: PLAIN_RESPONSE_TYPES.has(type!)
 			? { 'text/plain': { schema } }
 			: { 'application/json': { schema } }
@@ -1090,16 +1119,87 @@ const toResponseObject = (
 	const response = unwrapSchema(schema, vendors, 'output', openapiVersion)
 	if (!response) return
 
-	const responseSchema = stripHeaders(response)
+	const contentType =
+		toResponseContentType(schema) ?? toResponseContentType(response as any)
+	const responseSchema = stripResponseMetadata(response)
 	// @ts-ignore Must exclude $ref from root options
 	const { type, description } = unwrapReference(responseSchema, definitions)
 	const headers = toResponseHeaders(schema, vendors, openapiVersion)
-	const content = toResponseContent(responseSchema, type, description)
+	const content = toResponseContent(
+		responseSchema,
+		type,
+		contentType,
+		description
+	)
 
 	return {
 		description: description ?? `Response for status ${status}`,
 		...(headers ? { headers } : {}),
 		...(content ? { content } : {})
+	}
+}
+
+const mergeOpenAPIResponseObject = (
+	base: OpenAPIV3.ResponseObject | OpenAPIV3.ReferenceObject | undefined,
+	incoming: OpenAPIV3.ResponseObject | OpenAPIV3.ReferenceObject | undefined
+) => {
+	if (!base) return incoming
+	if (!incoming) return base
+	if ('$ref' in base || '$ref' in incoming) return incoming
+
+	return {
+		...base,
+		...incoming,
+		...(base.headers || incoming.headers
+			? {
+					headers: {
+						...base.headers,
+						...incoming.headers
+					}
+				}
+			: {}),
+		...(base.content || incoming.content
+			? {
+					content: {
+						...base.content,
+						...incoming.content
+					}
+				}
+			: {})
+	} satisfies OpenAPIV3.ResponseObject
+}
+
+const mergeOpenAPIResponses = (
+	base: OpenAPIV3.ResponsesObject | undefined,
+	incoming: OpenAPIV3.ResponsesObject | undefined
+): OpenAPIV3.ResponsesObject | undefined => {
+	if (!base) return incoming
+	if (!incoming) return base
+
+	const responses: OpenAPIV3.ResponsesObject = { ...base }
+
+	for (const [status, response] of Object.entries(incoming))
+		responses[status] = mergeOpenAPIResponseObject(
+			responses[status],
+			response
+		) as any
+
+	return responses
+}
+
+const mergeOperationDetail = (
+	base: Partial<OpenAPIV3.OperationObject> | undefined,
+	incoming: Partial<OpenAPIV3.OperationObject> | undefined
+): Partial<OpenAPIV3.OperationObject> => {
+	if (!base) return incoming ?? {}
+	if (!incoming) return base
+
+	const responses = mergeOpenAPIResponses(base.responses, incoming.responses)
+
+	return {
+		...base,
+		...incoming,
+		...(responses ? { responses } : {})
 	}
 }
 
@@ -1186,6 +1286,7 @@ export function toOpenAPISchema(
 		const hooks: InputSchema & {
 			detail?: Partial<OpenAPIV3.OperationObject>
 		} = route.hooks ?? {}
+		let referenceDetail: Partial<OpenAPIV3.OperationObject> | undefined
 
 		if (references?.length)
 			for (const reference of references as AdditionalReference[]) {
@@ -1197,23 +1298,29 @@ export function toOpenAPISchema(
 
 				if (!refer) continue
 
-				if (!hooks.body && isValidSchema(refer.body))
+				if (refer.detail)
+					referenceDetail = mergeOperationDetail(
+						referenceDetail,
+						refer.detail
+					)
+
+				if (!hooks.body && isReferenceSchema(refer.body))
 					hooks.body = refer.body
 
-				if (!hooks.query && isValidSchema(refer.query))
+				if (!hooks.query && isReferenceSchema(refer.query))
 					hooks.query = refer.query
 
-				if (!hooks.params && isValidSchema(refer.params))
+				if (!hooks.params && isReferenceSchema(refer.params))
 					hooks.params = refer.params
 
-				if (!hooks.headers && isValidSchema(refer.headers))
+				if (!hooks.headers && isReferenceSchema(refer.headers))
 					hooks.headers = refer.headers
 
 				if (refer.response)
 					for (const [status, schema] of Object.entries(
 						refer.response
 					))
-						if (isValidSchema(schema)) {
+						if (isReferenceSchema(schema)) {
 							if (!hooks.response) hooks.response = {}
 							else if (
 								typeof hooks.response !== 'object' ||
@@ -1249,9 +1356,7 @@ export function toOpenAPISchema(
 			continue
 
 		// Start building the operation object
-		const operation: Partial<OpenAPIV3.OperationObject> = {
-			...hooks.detail
-		}
+		const operation = mergeOperationDetail(referenceDetail, hooks.detail)
 
 		const parameters: Array<{
 			name: string
@@ -1346,7 +1451,11 @@ export function toOpenAPISchema(
 		}
 
 		// Add parameters if any exist
-		if (parameters.length > 0) operation.parameters = parameters
+		if (parameters.length > 0)
+			operation.parameters = [
+				...(operation.parameters ?? []),
+				...parameters
+			]
 
 		// Handle request body
 		if (hooks.body && method !== 'get' && method !== 'head') {
@@ -1459,7 +1568,7 @@ export function toOpenAPISchema(
 
 		// Handle responses
 		if (hooks.response) {
-			operation.responses = {}
+			operation.responses = { ...(operation.responses ?? {}) }
 
 			if (
 				typeof hooks.response === 'object' &&
@@ -1478,7 +1587,11 @@ export function toOpenAPISchema(
 						openapiVersion
 					)
 
-					if (response) operation.responses[status] = response
+					if (response)
+						operation.responses[status] = mergeOpenAPIResponseObject(
+							response,
+							operation.responses[status]
+						) as any
 				}
 			} else {
 				const response = toResponseObject(
@@ -1489,13 +1602,17 @@ export function toOpenAPISchema(
 					openapiVersion
 				)
 
-				if (response) operation.responses['200'] = response
+				if (response)
+					operation.responses['200'] = mergeOpenAPIResponseObject(
+						response,
+						operation.responses['200']
+					) as any
 			}
 		}
 
 		for (let path of getPossiblePath(route.path)) {
 			const operationId =
-				hooks.detail?.operationId ?? toOperationId(route.method, path)
+				operation.operationId ?? toOperationId(route.method, path)
 
 			path = path.replace(/:([^/]+)/g, '{$1}')
 
@@ -1554,16 +1671,45 @@ export function toOpenAPISchema(
 	} satisfies Pick<OpenAPIV3.Document, 'paths' | 'components'>
 }
 
+const cloneResponseSchema = <S extends TSchema>(schema: S) => {
+	const clone = Object.create(
+		Object.getPrototypeOf(schema),
+		Object.getOwnPropertyDescriptors(schema)
+	) as S
+
+	return clone
+}
+
 export const withHeaders = <S extends TSchema, H extends TProperties>(
 	schema: S,
 	headers: H
 ) => {
-	const clone = Object.create(
-		Object.getPrototypeOf(schema),
-		Object.getOwnPropertyDescriptors(schema)
-	) as S & { headers: H }
+	const clone = cloneResponseSchema(schema) as S & { headers: H }
 
 	clone.headers = headers
 
 	return clone
 }
+
+export const withContentType = <S extends TSchema>(
+	schema: S,
+	contentType: string
+) => {
+	const clone = cloneResponseSchema(schema) as S & { contentType: string }
+
+	clone.contentType = contentType
+
+	return clone
+}
+
+export const withBinaryResponse = (
+	contentType = 'application/octet-stream',
+	options?: Parameters<typeof t.String>[0]
+) =>
+	withContentType(
+		t.String({
+			...options,
+			format: options?.format ?? 'binary'
+		}),
+		contentType
+	)
