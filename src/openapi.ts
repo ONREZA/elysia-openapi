@@ -71,6 +71,17 @@ const uniqueOperationId = (
 	return count === 0 ? operationId : `${operationId}${count + 1}`
 }
 
+const OPENAPI_HTTP_METHODS = new Set([
+	'get',
+	'post',
+	'put',
+	'delete',
+	'patch',
+	'head',
+	'options',
+	'trace'
+])
+
 const optionalParamsRegex = /(\/:\w+\?)/g
 
 /**
@@ -1112,6 +1123,146 @@ const normalizeSchemaForOpenAPIVersion = <T>(
 	return nullToOpenApi(schema, openapiVersion)
 }
 
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+	!!value && typeof value === 'object' && !Array.isArray(value)
+
+const decodeJsonPointerSegment = (segment: string) =>
+	segment.replace(/~1/g, '/').replace(/~0/g, '~')
+
+const encodeJsonPointerSegment = (segment: string) =>
+	segment.replace(/~/g, '~0').replace(/\//g, '~1')
+
+const toComponentSchemaName = (name: string) =>
+	decodeJsonPointerSegment(name).replace(/[^A-Za-z0-9._-]/g, '_') ||
+	'Schema'
+
+const reserveComponentSchemaName = (
+	rawName: string,
+	components: Record<string, unknown>
+) => {
+	const base = toComponentSchemaName(rawName)
+	if (!(base in components)) return base
+
+	let index = 2
+	let name = `${base}${index}`
+	while (name in components) {
+		index++
+		name = `${base}${index}`
+	}
+
+	return name
+}
+
+const rewriteLocalDefinitionRef = (
+	ref: string,
+	definitionRefs: Map<string, string>
+) => {
+	for (const definitionKey of ['$defs', 'definitions'] as const) {
+		const prefix = `#/${definitionKey}/`
+		if (!ref.startsWith(prefix)) continue
+
+		const pointer = ref.slice(prefix.length)
+		const [rawName, ...rest] = pointer.split('/')
+		const componentName = definitionRefs.get(
+			`${definitionKey}:${decodeJsonPointerSegment(rawName)}`
+		)
+
+		if (!componentName) return ref
+
+		return [
+			'#/components/schemas',
+			encodeJsonPointerSegment(componentName),
+			...rest
+		].join('/')
+	}
+
+	return ref
+}
+
+const normalizeSchemaLocalDefinitions = <T>(
+	value: T,
+	components: Record<string, unknown>,
+	definitionRefs = new Map<string, string>()
+): T => {
+	if (!value || typeof value !== 'object') return value
+
+	if (Array.isArray(value))
+		return value.map((item) =>
+			normalizeSchemaLocalDefinitions(item, components, definitionRefs)
+		) as T
+
+	const schema = value as Record<string, unknown>
+	const scopedDefinitionRefs = new Map(definitionRefs)
+
+	for (const definitionKey of ['$defs', 'definitions'] as const) {
+		const definitions = schema[definitionKey]
+		if (!isPlainRecord(definitions)) continue
+
+		for (const rawName of Object.keys(definitions)) {
+			const componentName = reserveComponentSchemaName(
+				rawName,
+				components
+			)
+			components[componentName] = true
+			scopedDefinitionRefs.set(
+				`${definitionKey}:${rawName}`,
+				componentName
+			)
+		}
+	}
+
+	for (const definitionKey of ['$defs', 'definitions'] as const) {
+		const definitions = schema[definitionKey]
+		if (!isPlainRecord(definitions)) continue
+
+		for (const [rawName, definition] of Object.entries(definitions)) {
+			const componentName = scopedDefinitionRefs.get(
+				`${definitionKey}:${rawName}`
+			)!
+			components[componentName] = normalizeSchemaLocalDefinitions(
+				definition,
+				components,
+				scopedDefinitionRefs
+			)
+		}
+	}
+
+	const normalized: Record<string, unknown> = {}
+
+	for (const [key, nestedValue] of Object.entries(schema)) {
+		if (key === '$defs' || key === 'definitions') continue
+
+		normalized[key] =
+			key === '$ref' && typeof nestedValue === 'string'
+				? rewriteLocalDefinitionRef(nestedValue, scopedDefinitionRefs)
+				: normalizeSchemaLocalDefinitions(
+						nestedValue,
+						components,
+						scopedDefinitionRefs
+					)
+	}
+
+	return normalized as T
+}
+
+const normalizeOpenAPILocalDefinitions = (
+	paths: OpenAPIV3.PathsObject,
+	schemas: Record<string, unknown>
+) => {
+	const components = { ...schemas }
+
+	for (const [name, schema] of Object.entries(components))
+		components[name] = normalizeSchemaLocalDefinitions(
+			schema,
+			components
+		)
+
+	return {
+		paths: normalizeSchemaLocalDefinitions(paths, components),
+		schemas: components
+	}
+}
+
 /**
  * Convert TypeBox enum-like Union schemas to OpenAPI enum schemas
  *
@@ -1298,11 +1449,7 @@ const toInferredRequestContent = (
 ): OpenAPIV3.RequestBodyObject['content'] =>
 	PLAIN_RESPONSE_TYPES.has(type!)
 		? { 'text/plain': { schema } }
-		: {
-				'application/json': { schema },
-				'application/x-www-form-urlencoded': { schema },
-				'multipart/form-data': { schema }
-			}
+		: { 'application/json': { schema } }
 
 const toParserRequestContent = (
 	parse: unknown,
@@ -1698,6 +1845,7 @@ export function toOpenAPISchema(
 		})
 
 		if (
+			(method !== 'all' && !OPENAPI_HTTP_METHODS.has(method)) ||
 			(excludeStaticFile && isLikelyStaticFilePath(route.path)) ||
 			excludePaths.includes(route.path) ||
 			excludeMethods.includes(method) ||
@@ -2042,11 +2190,15 @@ export function toOpenAPISchema(
 			if (jsonSchema) schemas[name] = jsonSchema
 		}
 
+	const normalized = normalizeOpenAPILocalDefinitions(paths, schemas)
+
 	return {
 		components: {
-			schemas
+			schemas: normalized.schemas as NonNullable<
+				OpenAPIV3.ComponentsObject['schemas']
+			>
 		},
-		paths
+		paths: normalized.paths
 	} satisfies Pick<OpenAPIV3.Document, 'paths' | 'components'>
 }
 

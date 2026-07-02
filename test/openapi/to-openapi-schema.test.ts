@@ -202,39 +202,15 @@ describe('OpenAPI > toOpenAPISchema', () => {
 												const: 'Lilith',
 												type: 'string'
 											}
-										},
-										required: ['name'],
-										type: 'object'
-									}
+											},
+											required: ['name'],
+											type: 'object'
+										}
+									},
 								},
-								'application/x-www-form-urlencoded': {
-									schema: {
-										properties: {
-											name: {
-												const: 'Lilith',
-												type: 'string'
-											}
-										},
-										required: ['name'],
-										type: 'object'
-									}
-								},
-								'multipart/form-data': {
-									schema: {
-										properties: {
-											name: {
-												const: 'Lilith',
-												type: 'string'
-											}
-										},
-										required: ['name'],
-										type: 'object'
-									}
-								}
-							},
-							required: true
+								required: true
+							}
 						}
-					}
 				}
 			}
 		})
@@ -407,6 +383,104 @@ describe('OpenAPI > toOpenAPISchema', () => {
 				'application/json'
 			].schema.properties.ok
 		).toEqual({ type: 'boolean' })
+	})
+
+	it('uses input conversion for query defaults', () => {
+		const app = new Elysia().get('/search', () => 'ok', {
+			query: z.object({
+				page: z.number().default(1)
+			})
+		})
+
+		const schema = JSON.parse(
+			JSON.stringify(
+				toOpenAPISchema(app, undefined, undefined, {
+					zod: (schema, context) =>
+						z.toJSONSchema(schema, {
+							io: context.io,
+							target: context.target
+						})
+				})
+			)
+		)
+
+		expect(schema.paths['/search'].get.parameters).toEqual([
+			{
+				name: 'page',
+				in: 'query',
+				required: false,
+				schema: {
+					default: 1,
+					type: 'number'
+				}
+			}
+		])
+	})
+
+	it('hoists embedded local $defs into components', () => {
+		const edgeRuleAction = z.object({
+			type: z.literal('rewrite'),
+			value: z.string()
+		})
+		const app = new Elysia().post('/edge-rules', () => 'ok', {
+			body: z.object({
+				edgeRules: z.array(edgeRuleAction),
+				fallback: edgeRuleAction
+			})
+		})
+
+		const schema = JSON.parse(
+			JSON.stringify(
+				toOpenAPISchema(app, undefined, undefined, {
+					zod: (schema, context) =>
+						z.toJSONSchema(schema, {
+							io: context.io,
+							target: context.target,
+							reused: 'ref'
+						})
+				})
+			)
+		)
+
+		const bodySchema =
+			schema.paths['/edge-rules'].post.requestBody.content[
+				'application/json'
+			].schema
+
+		expect(JSON.stringify(schema)).not.toContain('#/$defs/')
+		expect(bodySchema.$defs).toBeUndefined()
+		expect(bodySchema.properties.edgeRules.items).toEqual({
+			$ref: '#/components/schemas/__schema0'
+		})
+		expect(bodySchema.properties.fallback).toEqual({
+			$ref: '#/components/schemas/__schema0'
+		})
+		expect(schema.components.schemas.__schema0).toEqual({
+			type: 'object',
+			properties: {
+				type: {
+					type: 'string',
+					const: 'rewrite'
+				},
+				value: {
+					type: 'string'
+				}
+			},
+			required: ['type', 'value']
+		})
+	})
+
+	it('excludes websocket routes from OpenAPI paths', () => {
+		const app = new Elysia()
+			.ws('/v1/events/ws', {
+				message() {}
+			})
+			.get('/health', () => 'ok')
+
+		const schema = JSON.parse(JSON.stringify(toOpenAPISchema(app)))
+
+		expect(schema.paths['/v1/events/ws']).toBeUndefined()
+		expect(schema.paths['/health'].get).toBeDefined()
 	})
 
 	it('throws on empty Standard Schema conversion when strict mode is enabled', () => {
@@ -1023,28 +1097,6 @@ describe('OpenAPI > toOpenAPISchema', () => {
 										required: ['age'],
 										type: 'object'
 									}
-								},
-								'application/x-www-form-urlencoded': {
-									schema: {
-										properties: {
-											age: {
-												type: 'number'
-											}
-										},
-										required: ['age'],
-										type: 'object'
-									}
-								},
-								'multipart/form-data': {
-									schema: {
-										properties: {
-											age: {
-												type: 'number'
-											}
-										},
-										required: ['age'],
-										type: 'object'
-									}
 								}
 							},
 							required: true
@@ -1312,16 +1364,6 @@ describe('OpenAPI > toOpenAPISchema', () => {
 						requestBody: {
 							content: {
 								'application/json': {
-									schema: {
-										$ref: '#/components/schemas/body'
-									}
-								},
-								'application/x-www-form-urlencoded': {
-									schema: {
-										$ref: '#/components/schemas/body'
-									}
-								},
-								'multipart/form-data': {
 									schema: {
 										$ref: '#/components/schemas/body'
 									}
@@ -2054,12 +2096,10 @@ describe('OpenAPI > ArkType', () => {
 	// ArkType emits the JSON Schema `$schema` dialect on each converted schema.
 	const $schema = 'https://json-schema.org/draft/2020-12/schema'
 
-	// Body schemas are mirrored across every accepted content type.
+	// Body schemas default to JSON unless the route declares a parser/content type.
 	const body = (s: Record<string, unknown>) => ({
 		content: {
-			'application/json': { schema: s },
-			'application/x-www-form-urlencoded': { schema: s },
-			'multipart/form-data': { schema: s }
+			'application/json': { schema: s }
 		},
 		required: true
 	})

@@ -17,6 +17,8 @@ Compared with upstream `@elysia/openapi@1.4.15`, this fork includes:
 - explicit request body media types via `withRequestContentType`
 - schema-level OpenAPI metadata via `withOpenAPISchema` and `withDiscriminator`
 - raw OpenAPI component references via `componentRef`
+- local JSON Schema `$defs` hoisted into `components.schemas` with rewritten refs
+- JSON-only default request body content for object schemas
 - sanitized and de-duplicated default `operationId` generation for dotted, dashed, and parameterized paths
 - OpenAPI operation metadata merged from `references[path][method].detail`
 - deep merge of OpenAPI media type metadata without dropping generated schemas
@@ -25,6 +27,7 @@ Compared with upstream `@elysia/openapi@1.4.15`, this fork includes:
 - nested TypeBox reference normalization
 - repeated documentation page request handling
 - custom absolute `specPath` handling
+- WebSocket and other non-HTTP Elysia route methods excluded from OpenAPI paths
 - exclusion fixes for tags, dotted API paths, and `RegExp` path filters
 - `x-tagGroups` documentation type support
 - `fromTypes` support for alphanumeric and digit-ending route keys, type aliases, and `import("...").TypeName` references
@@ -111,7 +114,9 @@ Configuration to exclude paths or methods from documentation
 
 ## exclude.methods
 
-List of methods to exclude from documentation
+List of methods to exclude from documentation. WebSocket and other non-HTTP
+methods are always skipped because they are not valid OpenAPI Path Item
+operations.
 
 ## exclude.paths
 
@@ -212,6 +217,10 @@ media type or response metadata cannot be inferred from the schema shape. Use
 `withRequestContentType` for imports/uploads whose request body media type
 should not be inferred from the route parser. Use `withOpenAPISchema` and
 `withDiscriminator` for schema-level OpenAPI metadata.
+
+Object request bodies default to `application/json`. Declare `parse` or use
+`withRequestContentType` for form, multipart, CSV, binary, or vendor-specific
+request media types.
 
 ```typescript
 import { Elysia, t } from 'elysia'

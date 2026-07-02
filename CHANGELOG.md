@@ -5,6 +5,9 @@ Feature:
 - Add `withOpenAPISchema` and `withDiscriminator` helpers for schema-level OpenAPI metadata.
 
 Bug fix:
+- Hoist embedded local JSON Schema `$defs` / `definitions` into `components.schemas` and rewrite local refs.
+- Exclude Elysia WebSocket and other non-HTTP routes from generated OpenAPI paths.
+- Default object request bodies to `application/json` unless a parser or `withRequestContentType` declares other media types.
 - Deep merge OpenAPI media type metadata so examples and encoding can be added without dropping generated schemas.
 
 # 1.4.19 - 2 Jul 2026
