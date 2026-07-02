@@ -52,6 +52,7 @@ export const openapi = <
 	scalar,
 	references,
 	mapJsonSchema,
+	strictSchemaConversion,
 	embedSpec
 }: ElysiaOpenAPIConfig<Enabled, Path> = {}) => {
 	if (!enabled) return new Elysia({ name: '@onreza/elysia-openapi' })
@@ -150,7 +151,10 @@ export const openapi = <
 														exclude,
 														references,
 														mapJsonSchema,
-														effectiveOpenAPIVersion
+														effectiveOpenAPIVersion,
+														{
+															strictSchemaConversion
+														}
 													)
 												)
 									)
@@ -188,7 +192,10 @@ export const openapi = <
 					exclude,
 					references,
 					mapJsonSchema,
-					effectiveOpenAPIVersion
+					effectiveOpenAPIVersion,
+					{
+						strictSchemaConversion
+					}
 				)
 			)
 		},
@@ -212,14 +219,20 @@ export {
 	toOpenAPISchema,
 	withBinaryResponse,
 	withContentType,
+	withDiscriminator,
 	withHeaders,
+	withOpenAPISchema,
 	withRequestContentType,
 	withResponse
 } from './openapi'
+export type { OpenAPISchemaMetadata } from './openapi'
 export type {
 	ElysiaOpenAPIConfig,
+	JsonSchemaConversionContext,
+	JsonSchemaTarget,
 	OpenAPIDocumentation,
-	OpenAPIVersion
+	OpenAPIVersion,
+	StrictSchemaConversion
 } from './types'
 
 export default openapi

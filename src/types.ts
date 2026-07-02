@@ -5,6 +5,24 @@ import type { SwaggerUIOptions } from './swagger/types'
 
 export type OpenAPIProvider = 'scalar' | 'swagger-ui' | null
 export type OpenAPIVersion = `3.0.${number}` | `3.1.${number}`
+export type JsonSchemaTarget =
+	| 'draft-2020-12'
+	| 'draft-07'
+	| 'openapi-3.0'
+	| (string & {})
+export type StrictSchemaConversion = boolean | 'warn'
+export type JsonSchemaConversionContext = {
+	vendor: string
+	io: 'input' | 'output'
+	typeMode: 'input' | 'output'
+	openapiVersion: OpenAPIVersion
+	target: JsonSchemaTarget
+	strictSchemaConversion?: StrictSchemaConversion
+}
+export type JsonSchemaMapper = (
+	schema: any,
+	context: JsonSchemaConversionContext
+) => unknown
 
 type MaybeArray<T> = T | T[]
 type OpenAPITagGroup = {
@@ -23,7 +41,7 @@ export type OpenAPIDocumentation = Omit<
 	'x-tagGroups'?: OpenAPITagGroup[]
 }
 
-export type MapJsonSchema = { [vendor: string]: Function } & {
+export type MapJsonSchema = { [vendor: string]: JsonSchemaMapper } & {
 	[vendor in  // schema['~standard'].vendor
 		| 'zod'
 		| 'effect'
@@ -31,7 +49,7 @@ export type MapJsonSchema = { [vendor: string]: Function } & {
 		| 'arktype'
 		| 'typemap'
 		| 'yup'
-		| 'joi']?: Function
+		| 'joi']?: JsonSchemaMapper
 }
 
 export type AdditionalReference = {
@@ -133,7 +151,11 @@ export interface ElysiaOpenAPIConfig<
 	embedSpec?: boolean
 
 	/**
-	 * Mapping function from Standard schema to OpenAPI schema
+	 * Mapping function from Standard Schema-compatible validators to JSON Schema.
+	 * Mapper functions receive `(schema, context)`, where `context.target` is
+	 * `draft-2020-12` for OpenAPI 3.1 and `openapi-3.0` for OpenAPI 3.0.
+	 * `context.io` / `context.typeMode` is `input` for requests and `output`
+	 * for responses.
 	 *
 	 * @example
 	 * ```ts
@@ -147,6 +169,16 @@ export interface ElysiaOpenAPIConfig<
 	 * })
 	 */
 	mapJsonSchema?: MapJsonSchema
+
+	/**
+	 * Controls JSON Schema conversion diagnostics for Standard Schema and
+	 * mapJsonSchema converters.
+	 *
+	 * - `true`: throw when conversion fails or returns an empty schema object.
+	 * - `'warn'`: warn for empty schema objects, but keep generating the spec.
+	 * - `false` / undefined: preserve the historical best-effort behavior.
+	 */
+	strictSchemaConversion?: StrictSchemaConversion
 
 	/**
 	 * Scalar configuration to customize scalar

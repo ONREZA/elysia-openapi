@@ -6,7 +6,9 @@ import {
 	toOpenAPISchema,
 	withBinaryResponse,
 	withContentType,
+	withDiscriminator,
 	withHeaders,
+	withOpenAPISchema,
 	withRequestContentType,
 	withResponse
 } from '../../src/openapi'
@@ -326,8 +328,7 @@ describe('OpenAPI > toOpenAPISchema', () => {
 			properties: {
 				name: { type: 'string' }
 			},
-			required: ['name'],
-			additionalProperties: false
+			required: ['name']
 		})
 	})
 
@@ -353,10 +354,87 @@ describe('OpenAPI > toOpenAPISchema', () => {
 		expect(Object.keys(requestBody.content)).toEqual([
 			'application/vnd.onreza+json'
 		])
+		const explicitSchema =
+			requestBody.content['application/vnd.onreza+json'].schema
+
+		expect(explicitSchema.properties.name).toEqual({ type: 'string' })
+	})
+
+	it('passes conversion context to mapJsonSchema functions', () => {
+		const calls: any[] = []
+		const app = new Elysia().post('/context', () => 'ok', {
+			body: z.object({
+				name: z.string()
+			}),
+			response: z.object({
+				ok: z.boolean()
+			})
+		})
+
+		const schema = JSON.parse(
+			JSON.stringify(
+				toOpenAPISchema(
+					app,
+					undefined,
+					undefined,
+					{
+						zod: (schema, context) => {
+							calls.push({ ...context })
+
+							return z.toJSONSchema(schema, {
+								target: context.target
+							})
+						}
+					},
+					'3.0.3'
+				)
+			)
+		)
+
+		expect(calls.map(({ io }) => io).sort()).toEqual([
+			'input',
+			'output'
+		])
+		expect(calls.every(({ target }) => target === 'openapi-3.0')).toBe(true)
+		expect(calls.every(({ typeMode, io }) => typeMode === io)).toBe(true)
 		expect(
-			requestBody.content['application/vnd.onreza+json'].schema.properties
-				.name
+			schema.paths['/context'].post.requestBody.content[
+				'application/json'
+			].schema.properties.name
 		).toEqual({ type: 'string' })
+		expect(
+			schema.paths['/context'].post.responses['200'].content[
+				'application/json'
+			].schema.properties.ok
+		).toEqual({ type: 'boolean' })
+	})
+
+	it('throws on empty Standard Schema conversion when strict mode is enabled', () => {
+		const emptyStandardSchema = {
+			'~standard': {
+				vendor: 'empty',
+				jsonSchema: {
+					input: () => ({}),
+					output: () => ({})
+				}
+			}
+		} as any
+		const app = new Elysia().post('/empty', () => 'ok', {
+			body: emptyStandardSchema
+		})
+
+		expect(() =>
+			toOpenAPISchema(
+				app,
+				undefined,
+				undefined,
+				undefined,
+				'3.1.2',
+				{
+					strictSchemaConversion: true
+				}
+			)
+		).toThrow('Schema conversion returned an empty schema object')
 	})
 
 	it('merges detail requestBody metadata with generated body content', () => {
@@ -440,6 +518,69 @@ describe('OpenAPI > toOpenAPISchema', () => {
 				value: {
 					name: 'Lilith'
 				}
+			}
+		})
+	})
+
+	it('merges OpenAPI schema metadata helpers into converted schemas', () => {
+		const app = new Elysia().post('/schema-metadata', () => 'ok', {
+			body: withOpenAPISchema(
+				z.object({
+					type: z.literal('user'),
+					name: z.string()
+				}),
+				{
+					examples: [
+						{
+							type: 'user',
+							name: 'Lilith'
+						}
+					]
+				}
+			),
+			response: withDiscriminator(
+				t.Object({
+					type: t.String(),
+					name: t.String()
+				}),
+				{
+					propertyName: 'type',
+					mapping: {
+						user: '#/components/schemas/User'
+					}
+				}
+			)
+		})
+
+		const schema = JSON.parse(
+			JSON.stringify(
+				toOpenAPISchema(app, undefined, undefined, {
+					zod: z.toJSONSchema
+				})
+			)
+		)
+		const bodySchema =
+			schema.paths['/schema-metadata'].post.requestBody.content[
+				'application/json'
+			].schema
+		const responseSchema =
+			schema.paths['/schema-metadata'].post.responses['200'].content[
+				'application/json'
+			].schema
+
+		expect(bodySchema.properties.name).toEqual({ type: 'string' })
+		expect(bodySchema.examples).toEqual([
+			{
+				type: 'user',
+				name: 'Lilith'
+			}
+		])
+		expect(bodySchema.openapiSchema).toBeUndefined()
+		expect(responseSchema.properties.type).toEqual({ type: 'string' })
+		expect(responseSchema.discriminator).toEqual({
+			propertyName: 'type',
+			mapping: {
+				user: '#/components/schemas/User'
 			}
 		})
 	})

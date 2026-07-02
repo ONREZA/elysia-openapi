@@ -15,9 +15,13 @@ Compared with upstream `@elysia/openapi@1.4.15`, this fork includes:
 - response headers emitted from `withHeaders`
 - explicit response media types via `withContentType`, `withResponse`, and `withBinaryResponse`
 - explicit request body media types via `withRequestContentType`
+- schema-level OpenAPI metadata via `withOpenAPISchema` and `withDiscriminator`
 - raw OpenAPI component references via `componentRef`
 - sanitized and de-duplicated default `operationId` generation for dotted, dashed, and parameterized paths
 - OpenAPI operation metadata merged from `references[path][method].detail`
+- deep merge of OpenAPI media type metadata without dropping generated schemas
+- JSON Schema conversion context for Standard Schema/Zod/Valibot mappers
+- strict schema conversion diagnostics via `strictSchemaConversion`
 - nested TypeBox reference normalization
 - repeated documentation page request handling
 - custom absolute `specPath` handling
@@ -98,6 +102,9 @@ OpenAPI documentation information
 
 @see https://spec.openapis.org/oas/latest.html
 
+For OpenAPI 3.1, `documentation` can include top-level fields such as
+`jsonSchemaDialect` and `webhooks`.
+
 ## exclude
 
 Configuration to exclude paths or methods from documentation
@@ -140,7 +147,8 @@ OpenAPI documentation frontend between:
 
 Additional OpenAPI reference for each endpoint
 
-References can also merge OpenAPI operation metadata:
+References can also merge OpenAPI operation metadata, including OpenAPI
+callbacks:
 
 ```typescript
 openapi({
@@ -162,12 +170,48 @@ openapi({
 })
 ```
 
-## response metadata helpers
+## mapJsonSchema
+
+`mapJsonSchema` converts Standard Schema-compatible validators, such as Zod or
+Valibot, into JSON Schema. Mapper functions receive a second context argument:
+
+```typescript
+import { toJsonSchema } from '@valibot/to-json-schema'
+import * as z from 'zod'
+
+openapi({
+	mapJsonSchema: {
+		zod: (schema, context) =>
+			z.toJSONSchema(schema, {
+				target: context.target,
+				io: context.io
+			}),
+		valibot: (schema, context) =>
+			toJsonSchema(schema, {
+				target: context.target,
+				typeMode: context.typeMode
+			})
+	}
+})
+```
+
+For OpenAPI 3.1 the target is `draft-2020-12`. For OpenAPI 3.0 the target is
+`openapi-3.0`. `context.io` / `context.typeMode` is `input` for requests and
+`output` for responses.
+
+## strictSchemaConversion
+
+Set `strictSchemaConversion: true` to throw when Standard Schema conversion
+fails or returns an empty schema object. Use `'warn'` to keep generating the
+document while surfacing empty conversion output.
+
+## metadata helpers
 
 Use `withContentType`, `withResponse`, and `withBinaryResponse` when a response
 media type or response metadata cannot be inferred from the schema shape. Use
 `withRequestContentType` for imports/uploads whose request body media type
-should not be inferred from the route parser.
+should not be inferred from the route parser. Use `withOpenAPISchema` and
+`withDiscriminator` for schema-level OpenAPI metadata.
 
 ```typescript
 import { Elysia, t } from 'elysia'
@@ -176,6 +220,8 @@ import {
 	openapi,
 	withBinaryResponse,
 	withContentType,
+	withDiscriminator,
+	withOpenAPISchema,
 	withRequestContentType,
 	withResponse
 } from '@onreza/elysia-openapi'
@@ -227,6 +273,22 @@ new Elysia()
 	})
 	.get('/manifest', () => ({ url: 'https://example.com/file.pdf' }), {
 		response: componentRef('DownloadManifest')
+	})
+	.get('/users/:id', () => ({ type: 'user', name: 'Lilith' }), {
+		response: withDiscriminator(
+			withOpenAPISchema(
+				t.Object({
+					type: t.String(),
+					name: t.String()
+				}),
+				{
+					examples: [{ type: 'user', name: 'Lilith' }]
+				}
+			),
+			{
+				propertyName: 'type'
+			}
+		)
 	})
 ```
 

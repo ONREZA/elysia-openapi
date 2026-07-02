@@ -19,8 +19,10 @@ import type {
 	AdditionalReference,
 	AdditionalReferences,
 	ElysiaOpenAPIConfig,
+	JsonSchemaConversionContext,
 	MapJsonSchema,
-	OpenAPIVersion
+	OpenAPIVersion,
+	StrictSchemaConversion
 } from './types'
 
 export const capitalize = (word: string) =>
@@ -276,7 +278,8 @@ const mergeSchemaProperty = (
 	existing: TSchema | string | undefined,
 	incoming: TSchema | string | undefined,
 	vendors?: MapJsonSchema,
-	openapiVersion: OpenAPIVersion = '3.1.2'
+	openapiVersion: OpenAPIVersion = '3.1.2',
+	strictSchemaConversion?: StrictSchemaConversion
 ): TSchema | string | undefined => {
 	if (!existing) return incoming
 	if (!incoming) return existing
@@ -293,7 +296,8 @@ const mergeSchemaProperty = (
 			incomingSchema,
 			vendors,
 			'input',
-			openapiVersion
+			openapiVersion,
+			strictSchemaConversion
 		) as any
 
 	if (!isTSchema(existingSchema) && existingSchema['~standard'])
@@ -301,7 +305,8 @@ const mergeSchemaProperty = (
 			existingSchema,
 			vendors,
 			'input',
-			openapiVersion
+			openapiVersion,
+			strictSchemaConversion
 		) as any
 
 	if (!incomingSchema) return existingSchema
@@ -333,7 +338,8 @@ type ResponseSchema =
 const unwrapResponseSchema = (
 	schema: ResponseSchema,
 	vendors?: MapJsonSchema,
-	openapiVersion: OpenAPIVersion = '3.1.2'
+	openapiVersion: OpenAPIVersion = '3.1.2',
+	strictSchemaConversion?: StrictSchemaConversion
 ) =>
 	typeof schema === 'string'
 		? normalizeSchemaReference(schema)
@@ -347,7 +353,8 @@ const unwrapResponseSchema = (
 							schema as any,
 							vendors,
 							'output',
-							openapiVersion
+							openapiVersion,
+							strictSchemaConversion
 						)
 					: Object.fromEntries(
 							Object.entries(schema).map(([status, schema]) => [
@@ -360,7 +367,8 @@ const unwrapResponseSchema = (
 												schema as any,
 												vendors,
 												'output',
-												openapiVersion
+												openapiVersion,
+												strictSchemaConversion
 											)
 							])
 						)
@@ -372,14 +380,25 @@ const mergeResponseSchema = (
 	_existing: ResponseSchema,
 	_incoming: ResponseSchema,
 	vendors?: MapJsonSchema,
-	openapiVersion: OpenAPIVersion = '3.1.2'
+	openapiVersion: OpenAPIVersion = '3.1.2',
+	strictSchemaConversion?: StrictSchemaConversion
 ): TSchema | { [status: number]: TSchema | string } | string | undefined => {
 	if (!_existing) return _incoming
 	if (!_incoming) return _existing
 
 	// Normalize string references to TRef nodes
-	let existing = unwrapResponseSchema(_existing, vendors, openapiVersion)
-	let incoming = unwrapResponseSchema(_incoming, vendors, openapiVersion)
+	let existing = unwrapResponseSchema(
+		_existing,
+		vendors,
+		openapiVersion,
+		strictSchemaConversion
+	)
+	let incoming = unwrapResponseSchema(
+		_incoming,
+		vendors,
+		openapiVersion,
+		strictSchemaConversion
+	)
 
 	if (!existing && !incoming) return undefined
 	if (incoming && !existing) return incoming as any
@@ -410,7 +429,8 @@ const mergeResponseSchema = (
 				existingSchema as TSchema,
 				incomingSchema as TSchema,
 				vendors,
-				openapiVersion
+				openapiVersion,
+				strictSchemaConversion
 			)
 		else if (existingSchema) schema[status] = existingSchema
 		else if (incomingSchema) schema[status] = incomingSchema
@@ -437,7 +457,8 @@ const mergeStandaloneValidators = (
 		standaloneValidator?: InputSchema[]
 	} & InputSchema,
 	vendors?: MapJsonSchema,
-	openapiVersion: OpenAPIVersion = '3.1.2'
+	openapiVersion: OpenAPIVersion = '3.1.2',
+	strictSchemaConversion?: StrictSchemaConversion
 ) => {
 	const merged = { ...hooks }
 
@@ -450,7 +471,8 @@ const mergeStandaloneValidators = (
 				merged.body as TSchema,
 				validator.body as TSchema,
 				vendors,
-				openapiVersion
+				openapiVersion,
+				strictSchemaConversion
 			)
 
 		if (validator.headers)
@@ -458,7 +480,8 @@ const mergeStandaloneValidators = (
 				merged.headers as TSchema,
 				validator.headers as TSchema,
 				vendors,
-				openapiVersion
+				openapiVersion,
+				strictSchemaConversion
 			)
 
 		if (validator.query)
@@ -466,7 +489,8 @@ const mergeStandaloneValidators = (
 				merged.query as TSchema,
 				validator.query as TSchema,
 				vendors,
-				openapiVersion
+				openapiVersion,
+				strictSchemaConversion
 			)
 
 		if (validator.params)
@@ -474,7 +498,8 @@ const mergeStandaloneValidators = (
 				merged.params as TSchema,
 				validator.params as TSchema,
 				vendors,
-				openapiVersion
+				openapiVersion,
+				strictSchemaConversion
 			)
 
 		if (validator.cookie)
@@ -482,7 +507,8 @@ const mergeStandaloneValidators = (
 				merged.cookie as TSchema,
 				validator.cookie as TSchema,
 				vendors,
-				openapiVersion
+				openapiVersion,
+				strictSchemaConversion
 			)
 
 		if (validator.response)
@@ -490,7 +516,8 @@ const mergeStandaloneValidators = (
 				merged.response as TSchema,
 				validator.response as TSchema,
 				vendors,
-				openapiVersion
+				openapiVersion,
+				strictSchemaConversion
 			)
 	}
 
@@ -532,7 +559,8 @@ const mergeStandaloneValidators = (
 const flattenRoutes = (
 	routes: any[],
 	vendors?: MapJsonSchema,
-	openapiVersion: OpenAPIVersion = '3.1.2'
+	openapiVersion: OpenAPIVersion = '3.1.2',
+	strictSchemaConversion?: StrictSchemaConversion
 ): any[] =>
 	routes.map((route) => {
 		if (!route.hooks?.standaloneValidator?.length) return route
@@ -542,7 +570,8 @@ const flattenRoutes = (
 			hooks: mergeStandaloneValidators(
 				route.hooks,
 				vendors,
-				openapiVersion
+				openapiVersion,
+				strictSchemaConversion
 			)
 		}
 	})
@@ -568,19 +597,136 @@ const unwrapReference = <T extends OpenAPIV3.SchemaObject | undefined>(
 	return enumToOpenApi(schema) as any
 }
 
+export type OpenAPISchemaMetadata = Partial<OpenAPIV3.SchemaObject> &
+	Record<string, unknown>
+
+const toJsonSchemaTarget = (openapiVersion: OpenAPIVersion) =>
+	openapiVersion.startsWith('3.0.') ? 'openapi-3.0' : 'draft-2020-12'
+
+const toSchemaConversionContext = (
+	schema: unknown,
+	io: JsonSchemaConversionContext['io'],
+	openapiVersion: OpenAPIVersion,
+	strictSchemaConversion?: StrictSchemaConversion
+): JsonSchemaConversionContext => {
+	const vendor =
+		schema && typeof schema === 'object'
+			? String((schema as any)['~standard']?.vendor ?? 'unknown')
+			: 'unknown'
+
+	return {
+		vendor,
+		io,
+		typeMode: io,
+		openapiVersion,
+		target: toJsonSchemaTarget(openapiVersion),
+		strictSchemaConversion
+	}
+}
+
+const toOpenAPISchemaMetadata = (schema: unknown) =>
+	schema && typeof schema === 'object' && !Array.isArray(schema)
+		? (schema as { openapiSchema?: OpenAPISchemaMetadata }).openapiSchema
+		: undefined
+
+const applyOpenAPISchemaMetadata = <
+	T extends OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject | undefined
+>(
+	schema: T,
+	metadata: OpenAPISchemaMetadata | undefined
+): T => {
+	if (!schema || typeof schema !== 'object') return schema
+
+	const { openapiSchema, ...base } = schema as T & {
+		openapiSchema?: unknown
+	}
+
+	if (!metadata) return base as T
+
+	return {
+		...base,
+		...metadata
+	} as T
+}
+
+const isEmptySchemaObject = (schema: unknown) =>
+	schema &&
+	typeof schema === 'object' &&
+	!Array.isArray(schema) &&
+	Object.keys(schema).length === 0
+
+const reportSchemaConversionIssue = (
+	context: JsonSchemaConversionContext,
+	message: string,
+	error?: unknown
+) => {
+	const fullMessage = `[@onreza/elysia-openapi] ${message} (vendor: ${context.vendor}, io: ${context.io}, target: ${context.target})`
+
+	if (context.strictSchemaConversion === true) {
+		const next = new Error(fullMessage)
+		if (error && typeof error === 'object') {
+			try {
+				;(next as Error & { cause?: unknown }).cause = error
+			} catch {}
+		}
+		throw next
+	}
+
+	if (context.strictSchemaConversion === 'warn' || error) {
+		console.warn(fullMessage)
+		if (error) console.warn(error)
+	}
+}
+
+const finalizeConvertedSchema = (
+	schema: unknown,
+	context: JsonSchemaConversionContext,
+	metadata?: OpenAPISchemaMetadata
+): OpenAPIV3.SchemaObject | undefined => {
+	const converted = applyOpenAPISchemaMetadata(
+		normalizeSchemaForOpenAPIVersion(
+			enumToOpenApi(schema as OpenAPIV3.SchemaObject),
+			context.openapiVersion
+		),
+		metadata
+	)
+
+	if (!converted) {
+		reportSchemaConversionIssue(context, 'Failed to convert schema')
+		return
+	}
+
+	if (isEmptySchemaObject(converted))
+		reportSchemaConversionIssue(
+			context,
+			'Schema conversion returned an empty schema object'
+		)
+
+	return converted
+}
+
 export const unwrapSchema = (
 	schema: InputSchema['body'],
 	mapJsonSchema?: MapJsonSchema,
 	io: 'input' | 'output' = 'input',
-	openapiVersion: OpenAPIVersion = '3.1.2'
+	openapiVersion: OpenAPIVersion = '3.1.2',
+	strictSchemaConversion?: StrictSchemaConversion
 ): OpenAPIV3.SchemaObject | undefined => {
 	if (!schema) return
 
+	const metadata = toOpenAPISchemaMetadata(schema)
+
 	if (typeof schema === 'string') schema = toRef(schema)
 	if (Kind in schema)
-		return normalizeSchemaForOpenAPIVersion(
-			enumToOpenApi(schema),
-			openapiVersion
+		return finalizeConvertedSchema(
+			schema,
+			toSchemaConversionContext(
+				schema,
+				io,
+				openapiVersion,
+				strictSchemaConversion
+			),
+			metadata
 		)
 
 	// Already unwrapped by merging standalone validators
@@ -589,68 +735,72 @@ export const unwrapSchema = (
 		// @ts-ignore
 		(schema.$schema || schema.type || schema.properties || schema.items)
 	)
-		return normalizeSchemaForOpenAPIVersion(
-			schema as OpenAPIV3.SchemaObject,
-			openapiVersion
+		return finalizeConvertedSchema(
+			schema,
+			toSchemaConversionContext(
+				schema,
+				io,
+				openapiVersion,
+				strictSchemaConversion
+			),
+			metadata
 		)
 
 	if (!schema?.['~standard']) return
 
 	// @ts-ignore
 	const vendor = schema['~standard'].vendor
+	const context = toSchemaConversionContext(
+		schema,
+		io,
+		openapiVersion,
+		strictSchemaConversion
+	)
 
 	try {
-		const jsonSchemaTarget = openapiVersion.startsWith('3.0.')
-			? 'draft-07'
-			: 'draft-2020-12'
-
 		if (
 			mapJsonSchema?.[vendor] &&
 			typeof mapJsonSchema[vendor] === 'function'
 		)
-			return normalizeSchemaForOpenAPIVersion(
-				enumToOpenApi(mapJsonSchema[vendor](schema)),
-				openapiVersion
+			return finalizeConvertedSchema(
+				mapJsonSchema[vendor](schema, context),
+				context,
+				metadata
 			)
 
 		// ============================================================================
 		// ArkType toJsonSchema fallback (predicates, morphs, Date, etc.)
 		// ============================================================================
 		if (vendor === 'arktype')
-			return normalizeSchemaForOpenAPIVersion(
-				enumToOpenApi(
-					// @ts-ignore
-					schema?.toJsonSchema?.({
-						fallback: {
-							// real Date types -> string with date-time format
-							date: (
-								ctx: { base: Record<string, unknown> }
-							) => ({
-								...ctx.base,
-								type: 'string',
-								format: 'date-time'
-							}),
-							// anything else unrepresentable -> keep the base type
-							default: (
-								ctx: { base: Record<string, unknown> }
-							) => ctx.base
-						}
-					})
-				),
-				openapiVersion
+			return finalizeConvertedSchema(
+				// @ts-ignore
+				schema?.toJsonSchema?.({
+					fallback: {
+						// real Date types -> string with date-time format
+						date: (ctx: { base: Record<string, unknown> }) => ({
+							...ctx.base,
+							type: 'string',
+							format: 'date-time'
+						}),
+						// anything else unrepresentable -> keep the base type
+						default: (ctx: { base: Record<string, unknown> }) =>
+							ctx.base
+					}
+				}),
+				context,
+				metadata
 			)
 
 		// @ts-ignore
 		if (schema['~standard']?.jsonSchema?.[io])
 			// @ts-ignore
-			return normalizeSchemaForOpenAPIVersion(
-				enumToOpenApi(
-					// @ts-ignore
-					schema['~standard'].jsonSchema[io]({
-						target: jsonSchemaTarget
-					})
-				),
-				openapiVersion
+			return finalizeConvertedSchema(
+				// @ts-ignore
+				schema['~standard'].jsonSchema[io]({
+					target: context.target
+				}),
+				context,
+				metadata
 			)
 
 		switch (vendor) {
@@ -707,15 +857,20 @@ export const unwrapSchema = (
 				break
 		}
 
-		return normalizeSchemaForOpenAPIVersion(
-			enumToOpenApi(
-				// @ts-ignore
-				schema.toJSONSchema?.() ?? schema?.toJsonSchema?.()
-			),
-			openapiVersion
+		return finalizeConvertedSchema(
+			// @ts-ignore
+			schema.toJSONSchema?.(context) ?? schema?.toJsonSchema?.(context),
+			context,
+			metadata
 		)
 	} catch (error) {
-		console.warn(error)
+		if (
+			error instanceof Error &&
+			error.message.startsWith('[@onreza/elysia-openapi]')
+		)
+			throw error
+
+		reportSchemaConversionIssue(context, 'Schema conversion failed', error)
 	}
 }
 
@@ -1051,7 +1206,8 @@ export const enumToOpenApi = <
 const toResponseHeaders = (
 	schema: InputSchema['body'],
 	vendors?: MapJsonSchema,
-	openapiVersion: OpenAPIVersion = '3.1.2'
+	openapiVersion: OpenAPIVersion = '3.1.2',
+	strictSchemaConversion?: StrictSchemaConversion
 ): Record<string, OpenAPIV3.HeaderObject> | undefined => {
 	const headers =
 		schema && typeof schema === 'object' && !Array.isArray(schema)
@@ -1070,7 +1226,8 @@ const toResponseHeaders = (
 							headerSchema as any,
 							vendors,
 							'output',
-							openapiVersion
+							openapiVersion,
+							strictSchemaConversion
 						)
 					}
 				] as const
@@ -1349,9 +1506,16 @@ const toResponseObject = (
 	status: string,
 	definitions: Record<string, unknown>,
 	vendors?: MapJsonSchema,
-	openapiVersion: OpenAPIVersion = '3.1.2'
+	openapiVersion: OpenAPIVersion = '3.1.2',
+	strictSchemaConversion?: StrictSchemaConversion
 ): OpenAPIV3.ResponseObject | undefined => {
-	const response = unwrapSchema(schema, vendors, 'output', openapiVersion)
+	const response = unwrapSchema(
+		schema,
+		vendors,
+		'output',
+		openapiVersion,
+		strictSchemaConversion
+	)
 	if (!response) return
 
 	const contentType =
@@ -1362,7 +1526,12 @@ const toResponseObject = (
 		toOpenAPIResponseOverride(response as any)
 	// @ts-ignore Must exclude $ref from root options
 	const { type, description } = unwrapReference(responseSchema, definitions)
-	const headers = toResponseHeaders(schema, vendors, openapiVersion)
+	const headers = toResponseHeaders(
+		schema,
+		vendors,
+		openapiVersion,
+		strictSchemaConversion
+	)
 	const content = toResponseContent(
 		responseSchema,
 		type,
@@ -1471,8 +1640,12 @@ export function toOpenAPISchema(
 	exclude?: ElysiaOpenAPIConfig['exclude'],
 	references?: AdditionalReferences,
 	vendors?: MapJsonSchema,
-	openapiVersion: OpenAPIVersion = '3.1.2'
+	openapiVersion: OpenAPIVersion = '3.1.2',
+	options?: {
+		strictSchemaConversion?: StrictSchemaConversion
+	}
 ) {
+	const strictSchemaConversion = options?.strictSchemaConversion
 	let {
 		methods: excludeMethods = ['options'],
 		staticFile: excludeStaticFile = true,
@@ -1512,7 +1685,8 @@ export function toOpenAPISchema(
 	const routes = flattenRoutes(
 		(app as any).getGlobalRoutes(),
 		vendors,
-		openapiVersion
+		openapiVersion,
+		strictSchemaConversion
 	)
 	for (const route of routes) {
 		if (route.hooks?.detail?.hide) continue
@@ -1617,7 +1791,13 @@ export function toOpenAPISchema(
 		// Handle path parameters
 		if (hooks.params) {
 			const params = unwrapReference(
-				unwrapSchema(hooks.params, vendors, 'input', openapiVersion),
+				unwrapSchema(
+					hooks.params,
+					vendors,
+					'input',
+					openapiVersion,
+					strictSchemaConversion
+				),
 				definitions
 			)
 
@@ -1645,7 +1825,13 @@ export function toOpenAPISchema(
 		// Handle query parameters
 		if (hooks.query) {
 			const query = unwrapReference(
-				unwrapSchema(hooks.query, vendors, 'input', openapiVersion),
+				unwrapSchema(
+					hooks.query,
+					vendors,
+					'input',
+					openapiVersion,
+					strictSchemaConversion
+				),
 				definitions
 			)
 
@@ -1664,7 +1850,13 @@ export function toOpenAPISchema(
 		// Handle header parameters
 		if (hooks.headers) {
 			const headers = unwrapReference(
-				unwrapSchema(hooks.headers, vendors, 'input', openapiVersion),
+				unwrapSchema(
+					hooks.headers,
+					vendors,
+					'input',
+					openapiVersion,
+					strictSchemaConversion
+				),
 				definitions
 			)
 
@@ -1683,7 +1875,13 @@ export function toOpenAPISchema(
 		// Handle cookie parameters
 		if (hooks.cookie) {
 			const cookie = unwrapReference(
-				unwrapSchema(hooks.cookie, vendors, 'input', openapiVersion),
+				unwrapSchema(
+					hooks.cookie,
+					vendors,
+					'input',
+					openapiVersion,
+					strictSchemaConversion
+				),
 				definitions
 			)
 
@@ -1712,7 +1910,8 @@ export function toOpenAPISchema(
 				hooks.body,
 				vendors,
 				'input',
-				openapiVersion
+				openapiVersion,
+				strictSchemaConversion
 			)
 
 			if (body) {
@@ -1761,7 +1960,8 @@ export function toOpenAPISchema(
 						status,
 						definitions,
 						vendors,
-						openapiVersion
+						openapiVersion,
+						strictSchemaConversion
 					)
 
 					if (response)
@@ -1776,7 +1976,8 @@ export function toOpenAPISchema(
 					'200',
 					definitions,
 					vendors,
-					openapiVersion
+					openapiVersion,
+					strictSchemaConversion
 				)
 
 				if (response)
@@ -1828,12 +2029,13 @@ export function toOpenAPISchema(
 
 	if (definitions)
 		for (const [name, schema] of Object.entries(definitions)) {
-			const jsonSchema = unwrapSchema(
-				schema as any,
-				vendors,
-				'input',
-				openapiVersion
-			) as
+				const jsonSchema = unwrapSchema(
+					schema as any,
+					vendors,
+					'input',
+					openapiVersion,
+					strictSchemaConversion
+				) as
 				| OpenAPIV3.SchemaObject
 				| undefined
 
@@ -1907,6 +2109,27 @@ export const withRequestContentType = <S extends object>(
 
 	return clone
 }
+
+export const withOpenAPISchema = <S extends object>(
+	schema: S,
+	metadata: OpenAPISchemaMetadata
+) => {
+	const clone = cloneResponseSchema(schema) as S & {
+		openapiSchema: OpenAPISchemaMetadata
+	}
+
+	clone.openapiSchema = metadata
+
+	return clone
+}
+
+export const withDiscriminator = <S extends object>(
+	schema: S,
+	discriminator: OpenAPIV3.DiscriminatorObject
+) =>
+	withOpenAPISchema(schema, {
+		discriminator
+	})
 
 export const withBinaryResponse = (
 	contentType = 'application/octet-stream',

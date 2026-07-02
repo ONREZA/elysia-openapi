@@ -1,4 +1,9 @@
 # Unreleased
+Feature:
+- Pass JSON Schema conversion context to `mapJsonSchema` functions, including `io`, `typeMode`, OpenAPI version, and target.
+- Add `strictSchemaConversion` diagnostics for failed or empty Standard Schema conversions.
+- Add `withOpenAPISchema` and `withDiscriminator` helpers for schema-level OpenAPI metadata.
+
 Bug fix:
 - Deep merge OpenAPI media type metadata so examples and encoding can be added without dropping generated schemas.
 

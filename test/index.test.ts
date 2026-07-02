@@ -140,6 +140,52 @@ describe('OpenAPI', () => {
 		await SwaggerParser.validate(res).catch((err) => fail(err))
 	})
 
+	it('passes through OpenAPI 3.1 webhooks', async () => {
+		const app = new Elysia().use(
+			openapi({
+				openapiVersion: '3.1.2',
+				documentation: {
+					webhooks: {
+						deploymentFinished: {
+							post: {
+								requestBody: {
+									content: {
+										'application/json': {
+											schema: {
+												type: 'object',
+												properties: {
+													deploymentId: {
+														type: 'string'
+													}
+												},
+												required: ['deploymentId']
+											}
+										}
+									}
+								},
+								responses: {
+									'200': {
+										description: 'Webhook accepted'
+									}
+								}
+							}
+						}
+					}
+				}
+			})
+		)
+
+		await app.modules
+
+		const res = await app.handle(req('/openapi/json')).then((x) => x.json())
+		expect(
+			res.webhooks.deploymentFinished.post.requestBody.content[
+				'application/json'
+			].schema.required
+		).toEqual(['deploymentId'])
+		await SwaggerParser.validate(res).catch((err) => fail(err))
+	})
+
 	it('supports OpenAPI 3.1 with swagger-ui provider', async () => {
 		const app = new Elysia().use(
 			openapi({

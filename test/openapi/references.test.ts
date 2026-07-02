@@ -270,4 +270,49 @@ describe('OpenAPI > references', () => {
 			}
 		})
 	})
+
+	it('preserves callback metadata from references detail', () => {
+		const app = new Elysia().post('/subscriptions', () => 'ok')
+
+		const schema = toOpenAPISchema(app, undefined, {
+			'/subscriptions': {
+				post: {
+					detail: {
+						callbacks: {
+							onEvent: {
+								'{$request.body#/callbackUrl}': {
+									post: {
+										requestBody: {
+											content: {
+												'application/json': {
+													schema: {
+														type: 'object',
+														properties: {
+															event: { type: 'string' }
+														}
+													}
+												}
+											}
+										},
+										responses: {
+											'200': {
+												description: 'Callback accepted'
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		})
+
+		expect(
+			serializable(schema)?.paths['/subscriptions'].post.callbacks
+				.onEvent['{$request.body#/callbackUrl}'].post.responses['200']
+		).toEqual({
+			description: 'Callback accepted'
+		})
+	})
 })
