@@ -402,6 +402,48 @@ describe('OpenAPI > toOpenAPISchema', () => {
 		).toEqual({ type: 'string' })
 	})
 
+	it('deep merges detail requestBody media type metadata', () => {
+		const app = new Elysia().post('/custom-detail-json', () => 'ok', {
+			body: z.object({
+				name: z.string()
+			}),
+			detail: {
+				requestBody: {
+					content: {
+						'application/json': {
+							examples: {
+								default: {
+									value: {
+										name: 'Lilith'
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		})
+
+		const requestBody = JSON.parse(
+			JSON.stringify(
+				toOpenAPISchema(app, undefined, undefined, {
+					zod: z.toJSONSchema
+				})
+			)
+		).paths['/custom-detail-json'].post.requestBody
+
+		expect(
+			requestBody.content['application/json'].schema.properties.name
+		).toEqual({ type: 'string' })
+		expect(requestBody.content['application/json'].examples).toEqual({
+			default: {
+				value: {
+					name: 'Lilith'
+				}
+			}
+		})
+	})
+
 	it('handle response', () => {
 		const app = new Elysia().get(
 			'/user',
@@ -550,6 +592,48 @@ describe('OpenAPI > toOpenAPISchema', () => {
 						description: 'CSV report',
 						type: 'string'
 					}
+				}
+			}
+		})
+	})
+
+	it('deep merges explicit response media type metadata', () => {
+		const app = new Elysia().get('/health', () => ({ ok: true }), {
+			response: withResponse(
+				t.Object({
+					ok: t.Boolean()
+				}),
+				{
+					content: {
+						'application/json': {
+							examples: {
+								success: {
+									value: {
+										ok: true
+									}
+								}
+							}
+						}
+					}
+				}
+			)
+		})
+
+		const response = JSON.parse(JSON.stringify(toOpenAPISchema(app))).paths[
+			'/health'
+		].get.responses['200']
+
+		expect(response.content['application/json'].schema).toEqual({
+			type: 'object',
+			properties: {
+				ok: { type: 'boolean' }
+			},
+			required: ['ok']
+		})
+		expect(response.content['application/json'].examples).toEqual({
+			success: {
+				value: {
+					ok: true
 				}
 			}
 		})

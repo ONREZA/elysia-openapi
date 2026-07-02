@@ -1,3 +1,7 @@
+# Unreleased
+Bug fix:
+- Deep merge OpenAPI media type metadata so examples and encoding can be added without dropping generated schemas.
+
 # 1.4.19 - 2 Jul 2026
 Bug fix:
 - Avoid emitting empty request body content for routes with custom parse functions.

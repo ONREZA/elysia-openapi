@@ -1226,6 +1226,85 @@ const toRequestContent = (
 	)
 }
 
+const mergeOpenAPIEncodingObject = (
+	base: OpenAPIV3.EncodingObject | undefined,
+	incoming: OpenAPIV3.EncodingObject | undefined
+) => {
+	if (!base) return incoming
+	if (!incoming) return base
+
+	return {
+		...base,
+		...incoming,
+		...(base.headers || incoming.headers
+			? {
+					headers: {
+						...base.headers,
+						...incoming.headers
+					}
+				}
+			: {})
+	} satisfies OpenAPIV3.EncodingObject
+}
+
+const mergeOpenAPIMediaTypeObject = (
+	base: OpenAPIV3.MediaTypeObject | undefined,
+	incoming: OpenAPIV3.MediaTypeObject | undefined
+) => {
+	if (!base) return incoming
+	if (!incoming) return base
+
+	let encoding: OpenAPIV3.MediaTypeObject['encoding'] | undefined
+
+	if (base.encoding || incoming.encoding) {
+		encoding = {}
+
+		for (const property of new Set([
+			...Object.keys(base.encoding ?? {}),
+			...Object.keys(incoming.encoding ?? {})
+		])) {
+			const merged = mergeOpenAPIEncodingObject(
+				base.encoding?.[property],
+				incoming.encoding?.[property]
+			)
+
+			if (merged) encoding[property] = merged
+		}
+	}
+
+	return {
+		...base,
+		...incoming,
+		...(base.examples || incoming.examples
+			? {
+					examples: {
+						...base.examples,
+						...incoming.examples
+					}
+				}
+			: {}),
+		...(encoding ? { encoding } : {})
+	} satisfies OpenAPIV3.MediaTypeObject
+}
+
+const mergeOpenAPIContent = (
+	base: OpenAPIV3.ResponseObject['content'] | undefined,
+	incoming: OpenAPIV3.ResponseObject['content'] | undefined
+) => {
+	if (!base) return incoming
+	if (!incoming) return base
+
+	const content = { ...base }
+
+	for (const [contentType, mediaType] of Object.entries(incoming))
+		content[contentType] = mergeOpenAPIMediaTypeObject(
+			content[contentType],
+			mediaType
+		)!
+
+	return content
+}
+
 const mergeOpenAPIRequestBodyObject = (
 	base: OpenAPIV3.RequestBodyObject | OpenAPIV3.ReferenceObject | undefined,
 	incoming:
@@ -1242,10 +1321,10 @@ const mergeOpenAPIRequestBodyObject = (
 		...incoming,
 		...(base.content || incoming.content
 			? {
-					content: {
-						...base.content,
-						...incoming.content
-					}
+					content: mergeOpenAPIContent(
+						base.content,
+						incoming.content
+					)
 				}
 			: {})
 	} satisfies OpenAPIV3.RequestBodyObject
@@ -1323,10 +1402,10 @@ const mergeOpenAPIResponseObject = (
 			: {}),
 		...(base.content || incoming.content
 			? {
-					content: {
-						...base.content,
-						...incoming.content
-					}
+					content: mergeOpenAPIContent(
+						base.content,
+						incoming.content
+					)
 				}
 			: {})
 	} satisfies OpenAPIV3.ResponseObject
