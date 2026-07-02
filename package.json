@@ -1,6 +1,6 @@
 {
     "name": "@onreza/elysia-openapi",
-    "version": "1.4.19",
+    "version": "1.4.20",
     "description": "Elysia plugin to add OpenAPI documentation",
     "author": {
         "name": "saltyAom",

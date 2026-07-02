@@ -1,4 +1,4 @@
-# Unreleased
+# 1.4.20 - 2 Jul 2026
 Feature:
 - Pass JSON Schema conversion context to `mapJsonSchema` functions, including `io`, `typeMode`, OpenAPI version, and target.
 - Add `strictSchemaConversion` diagnostics for failed or empty Standard Schema conversions.
