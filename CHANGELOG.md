@@ -1,4 +1,4 @@
-# Unreleased
+# 1.4.19 - 2 Jul 2026
 Bug fix:
 - Avoid emitting empty request body content for routes with custom parse functions.
 - Preserve and merge explicit `detail.requestBody` metadata with generated request body schemas.
