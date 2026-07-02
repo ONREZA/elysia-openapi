@@ -1135,6 +1135,122 @@ const PLAIN_RESPONSE_TYPES = new Set([
 	'boolean'
 ])
 
+const toInferredRequestContent = (
+	schema: OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject,
+	type: string | undefined
+): OpenAPIV3.RequestBodyObject['content'] =>
+	PLAIN_RESPONSE_TYPES.has(type!)
+		? { 'text/plain': { schema } }
+		: {
+				'application/json': { schema },
+				'application/x-www-form-urlencoded': { schema },
+				'multipart/form-data': { schema }
+			}
+
+const toParserRequestContent = (
+	parse: unknown,
+	schema: OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject
+): OpenAPIV3.RequestBodyObject['content'] | undefined => {
+	const content: OpenAPIV3.RequestBodyObject['content'] = {}
+	const parsers = Array.isArray(parse) ? parse : [parse]
+
+	for (const parser of parsers) {
+		const fn =
+			parser &&
+			typeof parser === 'object' &&
+			'fn' in parser
+				? (parser as HookContainer).fn
+				: parser
+
+		if (typeof fn === 'function') continue
+
+		switch (fn) {
+			case 'text':
+			case 'text/plain':
+				content['text/plain'] = { schema }
+				continue
+
+			case 'urlencoded':
+			case 'application/x-www-form-urlencoded':
+				content['application/x-www-form-urlencoded'] = { schema }
+				continue
+
+			case 'json':
+			case 'application/json':
+				content['application/json'] = { schema }
+				continue
+
+			case 'formdata':
+			case 'multipart/form-data':
+				content['multipart/form-data'] = { schema }
+				continue
+
+			case 'none':
+				content['application/json'] = { schema }
+				content['application/x-www-form-urlencoded'] = { schema }
+				content['multipart/form-data'] = { schema }
+				content['text/plain'] = { schema }
+				continue
+
+			case 'arrayBuffer':
+			case 'application/octet-stream':
+				content['application/octet-stream'] = { schema }
+				continue
+
+			default:
+				if (typeof fn === 'string' && fn.includes('/'))
+					content[fn] = { schema }
+		}
+	}
+
+	return Object.keys(content).length ? content : undefined
+}
+
+const toRequestContent = (
+	schema: OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject,
+	type: string | undefined,
+	requestContentTypes: string[] | undefined,
+	parse: unknown
+): OpenAPIV3.RequestBodyObject['content'] => {
+	if (requestContentTypes?.length)
+		return Object.fromEntries(
+			requestContentTypes.map((contentType) => [
+				contentType,
+				{ schema }
+			])
+		)
+
+	return (
+		toParserRequestContent(parse, schema) ??
+		toInferredRequestContent(schema, type)
+	)
+}
+
+const mergeOpenAPIRequestBodyObject = (
+	base: OpenAPIV3.RequestBodyObject | OpenAPIV3.ReferenceObject | undefined,
+	incoming:
+		| OpenAPIV3.RequestBodyObject
+		| OpenAPIV3.ReferenceObject
+		| undefined
+) => {
+	if (!base) return incoming
+	if (!incoming) return base
+	if ('$ref' in base || '$ref' in incoming) return incoming
+
+	return {
+		...base,
+		...incoming,
+		...(base.content || incoming.content
+			? {
+					content: {
+						...base.content,
+						...incoming.content
+					}
+				}
+			: {})
+	} satisfies OpenAPIV3.RequestBodyObject
+}
+
 const toResponseContent = (
 	schema: OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject,
 	type: string | undefined,
@@ -1242,11 +1358,16 @@ const mergeOperationDetail = (
 	if (!incoming) return base
 
 	const responses = mergeOpenAPIResponses(base.responses, incoming.responses)
+	const requestBody = mergeOpenAPIRequestBodyObject(
+		base.requestBody,
+		incoming.requestBody
+	)
 
 	return {
 		...base,
 		...incoming,
-		...(responses ? { responses } : {})
+		...(responses ? { responses } : {}),
+		...(requestBody ? { requestBody } : {})
 	}
 }
 
@@ -1333,6 +1454,7 @@ export function toOpenAPISchema(
 
 		const hooks: InputSchema & {
 			detail?: Partial<OpenAPIV3.OperationObject>
+			parse?: unknown
 		} = route.hooks ?? {}
 		let referenceDetail: Partial<OpenAPIV3.OperationObject> | undefined
 
@@ -1520,119 +1642,25 @@ export function toOpenAPISchema(
 					toRequestContentTypes(body as any)
 				const bodySchema = stripRequestMetadata(body)
 				// @ts-ignore
-				const { type, description, $ref, ...options } = unwrapReference(
+				const { type, description } = unwrapReference(
 					bodySchema,
 					definitions
 				)
+				const generatedRequestBody = {
+					description,
+					required: true,
+					content: toRequestContent(
+						bodySchema,
+						type,
+						requestContentTypes,
+						hooks.parse
+					)
+				} satisfies OpenAPIV3.RequestBodyObject
 
-				if (requestContentTypes?.length) {
-					operation.requestBody = {
-						description,
-						required: true,
-						content: Object.fromEntries(
-							requestContentTypes.map((contentType) => [
-								contentType,
-								{ schema: bodySchema }
-							])
-						)
-					}
-				}
-				// @ts-ignore
-				else if (hooks.parse) {
-					const content: Record<
-						string,
-						{ schema: OpenAPIV3.SchemaObject }
-					> = {}
-
-					// @ts-ignore
-					const parsers = hooks.parse as HookContainer[]
-
-					for (const parser of parsers) {
-						if (typeof parser.fn === 'function') continue
-
-						switch (parser.fn) {
-							case 'text':
-							case 'text/plain':
-								content['text/plain'] = { schema: bodySchema }
-								continue
-
-							case 'urlencoded':
-							case 'application/x-www-form-urlencoded':
-								content['application/x-www-form-urlencoded'] = {
-									schema: bodySchema
-								}
-								continue
-
-							case 'json':
-							case 'application/json':
-								content['application/json'] = {
-									schema: bodySchema
-								}
-								continue
-
-							case 'formdata':
-							case 'multipart/form-data':
-								content['multipart/form-data'] = {
-									schema: bodySchema
-								}
-								continue
-
-							case 'none':
-								// When parse is "none", include all common content types
-								// since the raw body could be any format
-								content['application/json'] = {
-									schema: bodySchema
-								}
-								content['application/x-www-form-urlencoded'] = {
-									schema: bodySchema
-								}
-								content['multipart/form-data'] = {
-									schema: bodySchema
-								}
-								content['text/plain'] = { schema: bodySchema }
-								continue
-
-							case 'arrayBuffer':
-							case 'application/octet-stream':
-								content['application/octet-stream'] = {
-									schema: bodySchema
-								}
-								continue
-						}
-					}
-
-					operation.requestBody = {
-						description,
-						content,
-						required: true
-					}
-				} else {
-					operation.requestBody = {
-						description,
-						required: true,
-						content:
-							type === 'string' ||
-							type === 'number' ||
-							type === 'integer' ||
-							type === 'boolean'
-								? {
-										'text/plain': {
-											schema: bodySchema
-										}
-									}
-								: {
-										'application/json': {
-											schema: bodySchema
-										},
-										'application/x-www-form-urlencoded': {
-											schema: bodySchema
-										},
-										'multipart/form-data': {
-											schema: bodySchema
-										}
-									}
-					}
-				}
+				operation.requestBody = mergeOpenAPIRequestBodyObject(
+					generatedRequestBody,
+					operation.requestBody
+				)
 			}
 		}
 
@@ -1741,7 +1769,7 @@ export function toOpenAPISchema(
 	} satisfies Pick<OpenAPIV3.Document, 'paths' | 'components'>
 }
 
-const cloneResponseSchema = <S extends TSchema>(schema: S) => {
+const cloneResponseSchema = <S extends object>(schema: S) => {
 	const clone = Object.create(
 		Object.getPrototypeOf(schema),
 		Object.getOwnPropertyDescriptors(schema)
@@ -1788,7 +1816,7 @@ export const withResponse = <S extends TSchema>(
 	return clone
 }
 
-export const withRequestContentType = <S extends TSchema>(
+export const withRequestContentType = <S extends object>(
 	schema: S,
 	contentType: string | string[]
 ) => {

@@ -298,6 +298,110 @@ describe('OpenAPI > toOpenAPISchema', () => {
 		})
 	})
 
+	it('falls back to schema-inferred request content for custom parsers', () => {
+		const app = new Elysia().post(
+			'/custom-parse',
+			({ body }) => body,
+			{
+				body: z.object({
+					name: z.string()
+				}),
+				parse: async ({ request }) =>
+					JSON.parse(await request.text())
+			}
+		)
+
+		const requestBody = JSON.parse(
+			JSON.stringify(
+				toOpenAPISchema(app, undefined, undefined, {
+					zod: z.toJSONSchema
+				})
+			)
+		).paths['/custom-parse'].post.requestBody
+
+		expect(requestBody.content).not.toEqual({})
+		expect(requestBody.content['application/json'].schema).toEqual({
+			$schema: 'https://json-schema.org/draft/2020-12/schema',
+			type: 'object',
+			properties: {
+				name: { type: 'string' }
+			},
+			required: ['name'],
+			additionalProperties: false
+		})
+	})
+
+	it('uses explicit request content type metadata on Zod schemas', () => {
+		const app = new Elysia().post('/custom-json', () => 'ok', {
+			body: withRequestContentType(
+				z.object({
+					name: z.string()
+				}),
+				'application/vnd.onreza+json'
+			),
+			parse: async ({ request }) => JSON.parse(await request.text())
+		})
+
+		const requestBody = JSON.parse(
+			JSON.stringify(
+				toOpenAPISchema(app, undefined, undefined, {
+					zod: z.toJSONSchema
+				})
+			)
+		).paths['/custom-json'].post.requestBody
+
+		expect(Object.keys(requestBody.content)).toEqual([
+			'application/vnd.onreza+json'
+		])
+		expect(
+			requestBody.content['application/vnd.onreza+json'].schema.properties
+				.name
+		).toEqual({ type: 'string' })
+	})
+
+	it('merges detail requestBody metadata with generated body content', () => {
+		const app = new Elysia().post('/custom-detail', () => 'ok', {
+			body: z.object({
+				name: z.string()
+			}),
+			parse: async ({ request }) => JSON.parse(await request.text()),
+			detail: {
+				requestBody: {
+					description: 'Explicit request metadata',
+					required: false,
+					content: {
+						'application/vnd.onreza+json': {
+							schema: {
+								type: 'object',
+								properties: {
+									name: { type: 'string' }
+								},
+								required: ['name']
+							}
+						}
+					}
+				}
+			}
+		})
+
+		const requestBody = JSON.parse(
+			JSON.stringify(
+				toOpenAPISchema(app, undefined, undefined, {
+					zod: z.toJSONSchema
+				})
+			)
+		).paths['/custom-detail'].post.requestBody
+
+		expect(requestBody.description).toBe('Explicit request metadata')
+		expect(requestBody.required).toBe(false)
+		expect(
+			requestBody.content['application/vnd.onreza+json']
+		).toBeDefined()
+		expect(
+			requestBody.content['application/json'].schema.properties.name
+		).toEqual({ type: 'string' })
+	})
+
 	it('handle response', () => {
 		const app = new Elysia().get(
 			'/user',

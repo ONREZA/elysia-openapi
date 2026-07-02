@@ -1,3 +1,9 @@
+# Unreleased
+Bug fix:
+- Avoid emitting empty request body content for routes with custom parse functions.
+- Preserve and merge explicit `detail.requestBody` metadata with generated request body schemas.
+- Allow `withRequestContentType` to wrap Zod and other object-like schemas.
+
 # 1.4.18 - 1 Jul 2026
 Feature:
 - Sanitize generated `operationId` values for dotted, dashed, and parameterized paths.
