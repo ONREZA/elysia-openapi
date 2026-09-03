@@ -163,6 +163,7 @@ describe('OpenAPI', () => {
 										{ $ref: '#/components/schemas/FallbackEvent' }
 									],
 									discriminator: {
+										propertyName: 'eventType',
 										defaultMapping:
 											'#/components/schemas/FallbackEvent'
 									}

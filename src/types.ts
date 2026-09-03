@@ -45,7 +45,7 @@ export type OpenAPI32DiscriminatorObject = Omit<
 	OpenAPIV3_2.DiscriminatorObject,
 	'propertyName'
 > & {
-	propertyName?: string
+	propertyName: string
 	defaultMapping?: string
 }
 
