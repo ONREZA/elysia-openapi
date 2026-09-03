@@ -3,9 +3,7 @@ import { Elysia, t } from 'elysia'
 
 import { toOpenAPISchema } from '../../src/openapi'
 
-const serializable = (
-	a: Record<string, unknown> | undefined
-): Record<string, unknown> | undefined => JSON.parse(JSON.stringify(a))
+const serializable = (value: unknown): any => JSON.parse(JSON.stringify(value))
 
 describe('OpenAPI > references', () => {
 	it('use references when schema is not available', () => {
@@ -203,6 +201,116 @@ describe('OpenAPI > references', () => {
 					}
 				}
 			}
+		})
+	})
+
+	it('merges OpenAPI detail metadata from references', () => {
+		const app = new Elysia().get('/downloads/:id', () => 'ok')
+
+		const schema = toOpenAPISchema(app, undefined, {
+			'/downloads/:id': {
+				get: {
+					detail: {
+						operationId: 'downloadFile',
+						security: [{ bearerAuth: [] }],
+						responses: {
+							default: {
+								description: 'Unexpected error'
+							}
+						}
+					},
+					response: {
+						200: t.String({
+							description: 'Download token'
+						})
+					}
+				}
+			}
+		})
+
+		expect(serializable(schema)).toEqual({
+			components: {
+				schemas: {}
+			},
+			paths: {
+				'/downloads/{id}': {
+					get: {
+						operationId: 'downloadFile',
+						parameters: [
+							{
+								in: 'path',
+								name: 'id',
+								required: true,
+								schema: {
+									type: 'string'
+								}
+							}
+						],
+						security: [{ bearerAuth: [] }],
+						responses: {
+							'200': {
+								content: {
+									'text/plain': {
+										schema: {
+											description: 'Download token',
+											type: 'string'
+										}
+									}
+								},
+								description: 'Download token'
+							},
+							default: {
+								description: 'Unexpected error'
+							}
+						}
+					}
+				}
+			}
+		})
+	})
+
+	it('preserves callback metadata from references detail', () => {
+		const app = new Elysia().post('/subscriptions', () => 'ok')
+
+		const schema = toOpenAPISchema(app, undefined, {
+			'/subscriptions': {
+				post: {
+					detail: {
+						callbacks: {
+							onEvent: {
+								'{$request.body#/callbackUrl}': {
+									post: {
+										requestBody: {
+											content: {
+												'application/json': {
+													schema: {
+														type: 'object',
+														properties: {
+															event: { type: 'string' }
+														}
+													}
+												}
+											}
+										},
+										responses: {
+											'200': {
+												description: 'Callback accepted'
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		})
+
+		expect(
+			serializable(schema)?.paths['/subscriptions'].post.callbacks
+				.onEvent['{$request.body#/callbackUrl}'].post.responses['200']
+		).toEqual({
+			description: 'Callback accepted'
 		})
 	})
 })

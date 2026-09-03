@@ -1,4 +1,4 @@
-import { Elysia } from 'elysia'
+import { Elysia, type AnyElysia } from 'elysia'
 
 import { SwaggerUIRender } from './swagger'
 import { ScalarRender } from './scalar'
@@ -14,37 +14,22 @@ type OpenAPIDocument = {
 }
 
 const DEFAULT_OPENAPI_VERSION: OpenAPIVersion = '3.1.2'
+const OPENAPI_VERSION_REGEX = /^3\.(0|1|2)\.\d+$/
 
-const normalizeOpenAPIVersion = (version: string): OpenAPIVersion => {
-	if (/^3\.(0|1)\.\d+$/.test(version)) return version as OpenAPIVersion
+const normalizeOpenAPIVersion = (
+	version: string | undefined
+): OpenAPIVersion => {
+	if (!version) return DEFAULT_OPENAPI_VERSION
 
-	console.warn(
-		`[@elysiajs/openapi] Invalid openapiVersion "${version}". Falling back to ${DEFAULT_OPENAPI_VERSION}.`
-	)
-	return DEFAULT_OPENAPI_VERSION
-}
-
-function isCloudflareWorker() {
-	try {
-		// Check for the presence of caches.default, which is a global in Workers
-		if (
-			// @ts-ignore
-			typeof caches !== 'undefined' &&
-			// @ts-ignore
-			typeof caches.default !== 'undefined'
+	if (!OPENAPI_VERSION_REGEX.test(version)) {
+		console.warn(
+			`[@elysiajs/openapi] Invalid openapiVersion "${version}". Expected 3.0.x, 3.1.x, or 3.2.x. Falling back to ${DEFAULT_OPENAPI_VERSION}.`
 		)
-			return true
 
-		// @ts-ignore
-		if (typeof WebSocketPair !== 'undefined') {
-			return true
-		}
-	} catch (e) {
-		// If accessing these globals throws an error, it's likely not a Worker
-		return false
+		return DEFAULT_OPENAPI_VERSION
 	}
 
-	return false
+	return version as OpenAPIVersion
 }
 
 /**
@@ -67,6 +52,7 @@ export const openapi = <
 	scalar,
 	references,
 	mapJsonSchema,
+	strictSchemaConversion,
 	embedSpec
 }: ElysiaOpenAPIConfig<Enabled, Path> = {}) => {
 	if (!enabled) return new Elysia({ name: '@elysiajs/openapi' })
@@ -78,8 +64,21 @@ export const openapi = <
 		...documentation.info
 	}
 
-	const relativePath = specPath.startsWith('/') ? specPath.slice(1) : specPath
-	const effectiveOpenAPIVersion = normalizeOpenAPIVersion(openapiVersion)
+	const getSpecUrl = () => {
+		if (!specPath.startsWith('/')) return specPath
+
+		const defaultSpecPath = `${path}/json`
+		if (specPath === defaultSpecPath) return specPath.slice(1)
+
+		return specPath
+	}
+
+	const specUrl = getSpecUrl()
+	const effectiveOpenAPIVersion: OpenAPIVersion =
+		normalizeOpenAPIVersion(openapiVersion)
+
+	const getRouteCount = (app: AnyElysia) =>
+		(app as any).getGlobalRoutes?.().length ?? app.routes.length
 
 	let totalRoutes = 0
 	let cachedSchema: OpenAPIDocument | undefined
@@ -88,13 +87,14 @@ export const openapi = <
 		paths,
 		components: { schemas }
 	}: ReturnType<typeof toOpenAPISchema>): OpenAPIDocument => {
-		return (cachedSchema = {
+		const schema: OpenAPIDocument = {
 			...documentation,
 			openapi: effectiveOpenAPIVersion,
 			tags: !exclude?.tags
 				? documentation.tags
 				: documentation.tags?.filter(
-						(tag) => !exclude.tags?.includes(tag.name)
+						(tag: { name: string }) =>
+							!exclude.tags?.includes(tag.name)
 					),
 			info: {
 				title: 'Elysia Documentation',
@@ -113,7 +113,9 @@ export const openapi = <
 					...(documentation.components?.schemas as any)
 				}
 			}
-		})
+		}
+
+		return (cachedSchema = schema)
 	}
 
 	const app = new Elysia({ name: '@elysiajs/openapi' })
@@ -125,7 +127,7 @@ export const openapi = <
 			new Response(
 				provider === 'swagger-ui'
 					? SwaggerUIRender(info, {
-							url: relativePath,
+							url: specUrl,
 							dom_id: '#swagger-ui',
 							version: 'latest',
 							autoDarkMode: true,
@@ -134,7 +136,7 @@ export const openapi = <
 					: ScalarRender(
 							info,
 							{
-								url: relativePath,
+								url: specUrl,
 								version: 'latest',
 								cdn: `https://cdn.jsdelivr.net/npm/@scalar/api-reference@${scalar?.version ?? 'latest'}/dist/browser/standalone.min.js`,
 								...(scalar as ApiReferenceConfiguration),
@@ -142,7 +144,7 @@ export const openapi = <
 							},
 							embedSpec
 								? JSON.stringify(
-										totalRoutes === app.routes.length
+										totalRoutes === getRouteCount(app)
 											? cachedSchema
 											: toFullSchema(
 													toOpenAPISchema(
@@ -150,7 +152,10 @@ export const openapi = <
 														exclude,
 														references,
 														mapJsonSchema,
-														effectiveOpenAPIVersion
+														effectiveOpenAPIVersion,
+														{
+															strictSchemaConversion
+														}
 													)
 												)
 									)
@@ -165,7 +170,7 @@ export const openapi = <
 
 		return app.get(
 			path,
-			embedSpec || isCloudflareWorker() ? page : page(),
+			page,
 			{
 				detail: {
 					hide: true
@@ -175,10 +180,12 @@ export const openapi = <
 	}).get(
 		specPath,
 		function openAPISchema(): OpenAPIDocument {
-			if (totalRoutes === app.routes.length && cachedSchema)
+			const routeCount = getRouteCount(app)
+
+			if (totalRoutes === routeCount && cachedSchema)
 				return cachedSchema
 
-			totalRoutes = app.routes.length
+			totalRoutes = routeCount
 
 			return toFullSchema(
 				toOpenAPISchema(
@@ -186,7 +193,10 @@ export const openapi = <
 					exclude,
 					references,
 					mapJsonSchema,
-					effectiveOpenAPIVersion
+					effectiveOpenAPIVersion,
+					{
+						strictSchemaConversion
+					}
 				)
 			)
 		},
@@ -205,7 +215,39 @@ export const openapi = <
 }
 
 export { fromTypes } from './gen'
-export { toOpenAPISchema, withHeaders } from './openapi'
-export type { ElysiaOpenAPIConfig, OpenAPIVersion }
+export {
+	componentRef,
+	toOpenAPISchema,
+	withBinaryResponse,
+	withContentType,
+	withDiscriminator,
+	withHeaders,
+	withOpenAPISchema,
+	withRequestContentType,
+	withResponse
+} from './openapi'
+export type { OpenAPISchemaMetadata } from './openapi'
+export type {
+	ElysiaOpenAPIConfig,
+	JsonSchemaConversionContext,
+	JsonSchemaTarget,
+	OpenAPI32ComponentsObject,
+	OpenAPI32DiscriminatorObject,
+	OpenAPI32Documentation,
+	OpenAPI32EncodingObject,
+	OpenAPI32ExampleObject,
+	OpenAPI32MediaTypeObject,
+	OpenAPI32OAuth2SecurityScheme,
+	OpenAPI32OAuthFlowObject,
+	OpenAPI32OperationObject,
+	OpenAPI32PathItemObject,
+	OpenAPI32ResponseObject,
+	OpenAPI32SecuritySchemeObject,
+	OpenAPI32ServerObject,
+	OpenAPI32TagObject,
+	OpenAPIDocumentation,
+	OpenAPIVersion,
+	StrictSchemaConversion
+} from './types'
 
 export default openapi

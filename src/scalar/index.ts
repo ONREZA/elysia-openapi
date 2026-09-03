@@ -1,4 +1,4 @@
-import type { OpenAPIV3 } from 'openapi-types'
+import type { OpenAPIV3 } from '@scalar/openapi-types'
 import { ElysiaOpenAPIConfig } from '../types'
 
 const elysiaCSS = `.light-mode {
@@ -149,7 +149,7 @@ export const ScalarRender = (
       }
     </style>
     <style>
-      ${config.customCss ?? elysiaCSS}
+      ${config.customCss ?? (config.theme ? '' : elysiaCSS)}
     </style>
   </head>
   <body>

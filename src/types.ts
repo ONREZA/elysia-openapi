@@ -1,25 +1,209 @@
 import type { TSchema } from 'elysia'
-import type { OpenAPIV3, OpenAPIV3_1 } from 'openapi-types'
+import type {
+	OpenAPIV3,
+	OpenAPIV3_1,
+	OpenAPIV3_2
+} from '@scalar/openapi-types'
 import type { ApiReferenceConfiguration } from '@scalar/types'
 import type { SwaggerUIOptions } from './swagger/types'
 
 export type OpenAPIProvider = 'scalar' | 'swagger-ui' | null
-export type OpenAPIVersion = `3.0.${number}` | `3.1.${number}`
+export type OpenAPIVersion =
+	| `3.0.${number}`
+	| `3.1.${number}`
+	| `3.2.${number}`
+export type JsonSchemaTarget =
+	| 'draft-2020-12'
+	| 'draft-07'
+	| 'openapi-3.0'
+	| (string & {})
+export type StrictSchemaConversion = boolean | 'warn'
+export type JsonSchemaConversionContext = {
+	vendor: string
+	io: 'input' | 'output'
+	typeMode: 'input' | 'output'
+	openapiVersion: OpenAPIVersion
+	target: JsonSchemaTarget
+	strictSchemaConversion?: StrictSchemaConversion
+}
+export type JsonSchemaMapper = (
+	schema: any,
+	context: JsonSchemaConversionContext
+) => unknown
 
 type MaybeArray<T> = T | T[]
-type OpenAPIDocumentation =
-	| Omit<
-			Partial<OpenAPIV3.Document>,
-			| 'x-express-openapi-additional-middleware'
-			| 'x-express-openapi-validation-strict'
-	  >
-	| Omit<
-			Partial<OpenAPIV3_1.Document>,
-			| 'x-express-openapi-additional-middleware'
-			| 'x-express-openapi-validation-strict'
-	  >
+type OpenAPITagGroup = {
+	name: string
+	tags: string[]
+}
 
-export type MapJsonSchema = { [vendor: string]: Function } & {
+export type OpenAPI32TagObject = OpenAPIV3_2.TagObject
+
+export type OpenAPI32ServerObject = OpenAPIV3_2.ServerObject
+
+export type OpenAPI32DiscriminatorObject = Omit<
+	OpenAPIV3_2.DiscriminatorObject,
+	'propertyName'
+> & {
+	propertyName?: string
+	defaultMapping?: string
+}
+
+export type OpenAPI32ExampleObject = OpenAPIV3_2.ExampleObject
+
+export type OpenAPI32EncodingObject = Omit<
+	OpenAPIV3_2.EncodingObject,
+	'headers'
+> & {
+	headers?: Record<
+		string,
+		OpenAPIV3_2.ReferenceObject | OpenAPIV3_2.HeaderObject
+	>
+	encoding?: Record<string, OpenAPI32EncodingObject>
+	prefixEncoding?: OpenAPI32EncodingObject[]
+	itemEncoding?: OpenAPI32EncodingObject
+}
+
+export type OpenAPI32MediaTypeObject = Omit<
+	OpenAPIV3_2.MediaTypeObject,
+	'encoding' | 'examples'
+> & {
+	description?: string
+	itemSchema?:
+		| OpenAPIV3_2.SchemaObject
+		| OpenAPIV3_2.ReferenceObject
+	examples?: Record<
+		string,
+		OpenAPIV3_2.ReferenceObject | OpenAPI32ExampleObject
+	>
+	encoding?: Record<string, OpenAPI32EncodingObject>
+	prefixEncoding?: OpenAPI32EncodingObject[]
+	itemEncoding?: OpenAPI32EncodingObject
+}
+
+export type OpenAPI32ResponseObject = Omit<
+	OpenAPIV3_2.ResponseObject,
+	'description' | 'content'
+> & {
+	summary?: string
+	description?: string
+	content?: Record<string, OpenAPI32MediaTypeObject>
+}
+
+export type OpenAPI32OAuthFlowObject = {
+	authorizationUrl?: string
+	tokenUrl?: string
+	deviceAuthorizationUrl?: string
+	refreshUrl?: string
+	scopes: Record<string, string>
+}
+
+export type OpenAPI32OAuth2SecurityScheme = Omit<
+	OpenAPIV3_2.OAuth2SecurityScheme,
+	'flows'
+> & {
+	deprecated?: boolean
+	oauth2MetadataUrl?: string
+	flows: {
+		implicit?: OpenAPI32OAuthFlowObject
+		password?: OpenAPI32OAuthFlowObject
+		clientCredentials?: OpenAPI32OAuthFlowObject
+		authorizationCode?: OpenAPI32OAuthFlowObject
+		deviceAuthorization?: OpenAPI32OAuthFlowObject
+	}
+}
+
+export type OpenAPI32SecuritySchemeObject =
+	| (OpenAPIV3_2.SecuritySchemeObject & { deprecated?: boolean })
+	| OpenAPI32OAuth2SecurityScheme
+
+export type OpenAPI32OperationObject = Omit<
+	OpenAPIV3_2.OperationObject,
+	'responses' | 'servers'
+> & {
+	responses?: Record<
+		string,
+		OpenAPIV3_2.ReferenceObject | OpenAPI32ResponseObject
+	>
+	servers?: OpenAPI32ServerObject[]
+}
+
+export type OpenAPI32PathItemObject = Omit<
+	OpenAPIV3_2.PathItemObject,
+	| 'get'
+	| 'put'
+	| 'post'
+	| 'delete'
+	| 'options'
+	| 'head'
+	| 'patch'
+	| 'trace'
+	| 'servers'
+> & {
+	get?: OpenAPI32OperationObject
+	put?: OpenAPI32OperationObject
+	post?: OpenAPI32OperationObject
+	delete?: OpenAPI32OperationObject
+	options?: OpenAPI32OperationObject
+	head?: OpenAPI32OperationObject
+	patch?: OpenAPI32OperationObject
+	trace?: OpenAPI32OperationObject
+	query?: OpenAPI32OperationObject
+	additionalOperations?: Record<string, OpenAPI32OperationObject>
+	servers?: OpenAPI32ServerObject[]
+}
+
+export type OpenAPI32ComponentsObject = Omit<
+	OpenAPIV3_2.ComponentsObject,
+	'responses' | 'securitySchemes' | 'mediaTypes'
+> & {
+	responses?: Record<
+		string,
+		OpenAPIV3_2.ReferenceObject | OpenAPI32ResponseObject
+	>
+	securitySchemes?: Record<
+		string,
+		OpenAPIV3_2.ReferenceObject | OpenAPI32SecuritySchemeObject
+	>
+	mediaTypes?: Record<
+		string,
+		OpenAPIV3_2.ReferenceObject | OpenAPI32MediaTypeObject
+	>
+}
+
+export type OpenAPI32Documentation = Omit<
+	Partial<OpenAPIV3_2.Document>,
+	'components' | 'paths' | 'servers' | 'tags' | 'webhooks'
+> & {
+	$self?: string
+	components?: OpenAPI32ComponentsObject
+	paths?: Record<string, OpenAPI32PathItemObject | undefined>
+	servers?: OpenAPI32ServerObject[]
+	tags?: OpenAPI32TagObject[]
+	webhooks?: Record<
+		string,
+		OpenAPI32PathItemObject | OpenAPIV3_2.ReferenceObject
+	>
+}
+
+type DocumentationWithoutExpressExtensions<T> = Omit<
+	T,
+	| 'x-express-openapi-additional-middleware'
+	| 'x-express-openapi-validation-strict'
+>
+
+export type OpenAPIDocumentation = (
+	| DocumentationWithoutExpressExtensions<Partial<OpenAPIV3.Document>>
+	| DocumentationWithoutExpressExtensions<Partial<OpenAPIV3_1.Document>>
+	| DocumentationWithoutExpressExtensions<OpenAPI32Documentation>
+) & {
+	/**
+	 * Group tags in Scalar UI using the `x-tagGroups` extension.
+	 */
+	'x-tagGroups'?: OpenAPITagGroup[]
+}
+
+export type MapJsonSchema = { [vendor: string]: JsonSchemaMapper } & {
 	[vendor in  // schema['~standard'].vendor
 		| 'zod'
 		| 'effect'
@@ -27,17 +211,18 @@ export type MapJsonSchema = { [vendor: string]: Function } & {
 		| 'arktype'
 		| 'typemap'
 		| 'yup'
-		| 'joi']?: Function
+		| 'joi']?: JsonSchemaMapper
 }
 
 export type AdditionalReference = {
 	[path in string]: {
 		[method in string]: {
-			params: TSchema
-			query: TSchema
-			headers: TSchema
-			body: TSchema
-			response: { [status in number]: TSchema }
+			params?: TSchema | string
+			query?: TSchema | string
+			headers?: TSchema | string
+			body?: TSchema | string
+			response?: { [status in number | string]: TSchema | string }
+			detail?: Partial<OpenAPI32OperationObject>
 		}
 	}
 }
@@ -57,6 +242,8 @@ export interface ElysiaOpenAPIConfig<
 
 	/**
 	 * OpenAPI document version to emit
+	 *
+	 * Supports OpenAPI 3.0.x, 3.1.x, and 3.2.x
 	 *
 	 * @default '3.1.2'
 	 */
@@ -126,7 +313,11 @@ export interface ElysiaOpenAPIConfig<
 	embedSpec?: boolean
 
 	/**
-	 * Mapping function from Standard schema to OpenAPI schema
+	 * Mapping function from Standard Schema-compatible validators to JSON Schema.
+	 * Mapper functions receive `(schema, context)`, where `context.target` is
+	 * `draft-2020-12` for OpenAPI 3.1/3.2 and `openapi-3.0` for OpenAPI 3.0.
+	 * `context.io` / `context.typeMode` is `input` for requests and `output`
+	 * for responses.
 	 *
 	 * @example
 	 * ```ts
@@ -142,11 +333,21 @@ export interface ElysiaOpenAPIConfig<
 	mapJsonSchema?: MapJsonSchema
 
 	/**
+	 * Controls JSON Schema conversion diagnostics for Standard Schema and
+	 * mapJsonSchema converters.
+	 *
+	 * - `true`: throw when conversion fails or returns an empty schema object.
+	 * - `'warn'`: warn for empty schema objects, but keep generating the spec.
+	 * - `false` / undefined: preserve the historical best-effort behavior.
+	 */
+	strictSchemaConversion?: StrictSchemaConversion
+
+	/**
 	 * Scalar configuration to customize scalar
 	 *'
 	 * @see https://github.com/scalar/scalar/blob/main/documentation/configuration.md
 	 */
-	scalar?: ApiReferenceConfiguration & {
+	scalar?: Partial<ApiReferenceConfiguration> & {
 		/**
 		 * Version to use for Scalar cdn bundle
 		 *
