@@ -246,7 +246,7 @@ describe('OpenAPI', () => {
 		expect(html).not.toContain('undefined')
 	})
 
-	it('converts nullable union to type-array for OpenAPI 3.1', async () => {
+	it('preserves nullable union for OpenAPI 3.1', async () => {
 		const app = new Elysia().use(
 			openapi({
 				openapiVersion: '3.1.2'
@@ -267,8 +267,7 @@ describe('OpenAPI', () => {
 			response.content?.['text/plain']?.schema
 
 		expect(schema).toBeDefined()
-		expect(schema.type).toEqual(['string', 'null'])
-		expect(schema.anyOf).toBeUndefined()
+		expect(schema.anyOf).toEqual([{ type: 'string' }, { type: 'null' }])
 	})
 
 	it('converts nullable union response to nullable:true for OpenAPI 3.0', async () => {

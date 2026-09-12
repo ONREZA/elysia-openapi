@@ -1,3 +1,12 @@
+# 1.4.21 - 12 Sep 2026
+Bug fix:
+- Preserve native JSON Schema unions in OpenAPI 3.1 instead of flattening nullable branches into type arrays. Nullable enums, constants, and parent constraints keep the same accepted values.
+- Split schema conversion and metadata helpers into focused modules without changing public exports.
+
+Validation:
+- Add JSON Schema validator checks and an actual Elysia nullable-enum response regression.
+- Verify all 132 Bun tests, TypeScript declaration builds, and Node.js CommonJS/ESM imports.
+
 # 1.4.20 - 2 Jul 2026
 Feature:
 - Pass JSON Schema conversion context to `mapJsonSchema` functions, including `io`, `typeMode`, OpenAPI version, and target.

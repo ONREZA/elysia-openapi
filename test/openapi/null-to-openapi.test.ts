@@ -20,7 +20,7 @@ describe('OpenAPI > nullToOpenAPI', () => {
 		})
 	})
 
-	it('converts nullable union to type:[string, null] for OAS 3.1', () => {
+	it('preserves nullable JSON Schema unions for OAS 3.1', () => {
 		const schema = t.Object({
 			promo_code: t.Optional(
 				t.Union([t.String({ example: 'SUMMER20' }), t.Null()])
@@ -30,8 +30,7 @@ describe('OpenAPI > nullToOpenAPI', () => {
 		const result = nullToOpenApi(schema as any, '3.1.2') as any
 
 		expect(result.properties.promo_code).toMatchObject({
-			type: ['string', 'null'],
-			example: 'SUMMER20'
+			anyOf: [{ type: 'string', example: 'SUMMER20' }, { type: 'null' }]
 		})
 		expect(result.properties.promo_code.nullable).toBeUndefined()
 	})
@@ -79,7 +78,7 @@ describe('OpenAPI > nullToOpenAPI', () => {
 		const result = nullToOpenApi(schema as any, '3.1.2') as any
 
 		expect(result.properties.promo_code).toMatchObject({
-			type: ['string', 'null']
+			anyOf: [{ type: 'string' }, { type: 'null' }]
 		})
 		expect(result.default).toEqual({
 			type: 'null',
